@@ -198,7 +198,8 @@ add_custom_target(
     COMMAND
         ${CMAKE_COMMAND} -E env
         "OS_QEMU_CMD=${QEMU};${QEMU_RUN_OPTS};-kernel;$<TARGET_FILE:kernel.bin>"
-        uv run --project ${TESTS_DIR} pytest ${TESTS_DIR}/integration
+        uv run --project ${TESTS_DIR} pytest ${TESTS_DIR}/integration -v
+        --tb=short
     DEPENDS
         kernel.bin
         ${DISK_IMG}
