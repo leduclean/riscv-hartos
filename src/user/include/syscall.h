@@ -146,6 +146,19 @@ ssize_t write(int fd, const char *buf, size_t count);
 ssize_t read(int fd, char *buf, size_t count);
 
 /**
+ * @brief Dupplicate an open file descriptor.
+ *
+ * @param fildes  Source fildes to copy on @p fildes2.
+ * @param fildes2 Destination fildes to copy on. If fildes2
+ * is already open, it is closed and replaced by fildes.
+ *
+ * @return 0 on success and error code < 0 on error.
+ * @retval 0 succes.
+ * @retval -EBDAF @p fildes or @p fildes2 doesn't exists.
+ */
+int dup2(int fildes, int fildes2);
+
+/**
  * @brief Move the read/write file offset.
  *
  * @param fd File descriptor idx.

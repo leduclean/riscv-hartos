@@ -24,6 +24,7 @@
 	X(fork_exec_test, "Fork then exec in the child", "fork_exec_test")    \
 	X(fs_io_test, "Read write roundtrip", "fs_io_test")                   \
 	X(fs_close_test, "Test close behavior on a fd", "fs_close_test")      \
+	X(fs_dup2_test, "Test dup2 behavior on a fd", "fs_dup2_test")         \
 	X(fs_seek_test, "Test the seek syscall on a fd", "fs_seek_test")      \
 	X(thread_test, "Test the thread api", "thread_test")
 

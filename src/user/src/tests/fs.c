@@ -58,6 +58,44 @@ void cmd_fs_close_test([[maybe_unused]] int argc,
 	TEST_SUCCESS();
 }
 
+void cmd_fs_dup2_test([[maybe_unused]] int argc,
+		      [[maybe_unused]] char *const argv[])
+{
+	int fd_src = open(FS_TEST_FILE, O_CREAT | O_W | O_R);
+	if (fd_src < 0) {
+		TEST_ERROR("open src failed: %d", fd_src);
+	}
+
+	int fd_dst = NOFILE - 1;
+	int res = dup2(fd_src, fd_dst);
+	if (res < 0) {
+		TEST_ERROR("Dup2 has failed with %d", res);
+	}
+
+	char test_buf[] = "Test";
+	ssize_t written = write(fd_src, test_buf, sizeof(test_buf));
+	if (written < 0) {
+		TEST_ERROR("Write failed: %ld", written);
+	}
+
+	int64_t off = seek(fd_dst, 0, SEEK_SET);
+	if (off < 0) {
+		TEST_ERROR("seek 0 SET failed: %ld", off);
+	}
+
+	char readed_buf[sizeof(test_buf)] = { 0 };
+	ssize_t readed = read(fd_dst, readed_buf, sizeof(readed_buf));
+	if (readed < 0) {
+		TEST_ERROR("Read failed: %ld", readed);
+	}
+
+	TEST_ASSERT_EQ_STR(test_buf, readed_buf);
+
+	close(fd_src);
+	close(fd_dst);
+
+	TEST_SUCCESS();
+}
 void cmd_fs_seek_test([[maybe_unused]] int argc,
 		      [[maybe_unused]] char *const argv[])
 {

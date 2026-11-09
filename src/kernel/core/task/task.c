@@ -634,20 +634,49 @@ int task_give_fd(task_t *p, struct file *f)
 struct file *task_get_fd(const task_t *p, int fd)
 {
 	if (fd >= NOFILE || fd < 0) {
-		return NULL;
+		return ERR_PTR(EBADF);
 	}
 	return p->fdtable[fd];
 }
 
 int task_release_fd(task_t *p, int fd)
 {
-	struct file *f = p->fdtable[fd];
-	if (!f) {
+	struct file *file = task_get_fd(p, fd);
+	if (IS_ERR(file)) {
+		return PTR_ERR(file);
+	}
+
+	if (!file) {
 		return -EBADF;
 	}
 
 	p->fdtable[fd] = NULL;
-	file_put(f);
+	file_put(file);
+
+	return 0;
+}
+
+int task_dup_fd(task_t *p, int fildes, int fildes2)
+{
+	struct file *src = task_get_fd(p, fildes);
+	if (IS_ERR(src)) {
+		return PTR_ERR(src);
+	}
+
+	if (fildes == fildes2) {
+		return 0;
+	}
+
+	struct file *dst = task_get_fd(p, fildes2);
+	if (IS_ERR(dst)) {
+		return PTR_ERR(dst);
+	}
+	if (dst) {
+		file_put(dst);
+		p->fdtable[fildes2] = NULL;
+	}
+
+	p->fdtable[fildes2] = file_get(src);
 
 	return 0;
 }

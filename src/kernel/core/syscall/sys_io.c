@@ -78,3 +78,9 @@ int64_t sys_seek(int fd, int64_t offset, int whence)
 
 	return file_seek(f, offset, whence);
 }
+
+int sys_dup2(int fildes, int fildes2)
+{
+	task_t *active = task_active();
+	return task_dup_fd(active, fildes, fildes2);
+}

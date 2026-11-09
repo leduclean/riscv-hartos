@@ -46,3 +46,5 @@ typedef __PTRDIFF_TYPE__ ssize_t;
 /** @} */
 
 #define EXEC_MAX_ARGS 7 /**< Max number of exec() arguments. */
+
+#define NOFILE 16 /**< Max number of file descriptor */

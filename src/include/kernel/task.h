@@ -17,7 +17,6 @@
 #include <kernel/waitqueue.h>
 
 #define KSTACK_SIZE 512 ///< Size of a task stack, in 64 bits words.
-#define NOFILE 16 /**< Number of file descriptor */
 
 /** @brief Lifecycle states of a task. */
 typedef enum {
@@ -271,6 +270,19 @@ struct file *task_get_fd(const task_t *p, int fd);
  * @retval -EBADF @p fd is not open.
  */
 int task_release_fd(task_t *p, int fd);
+
+/**
+ * @brief Dupplicate an open file descriptor.
+ *
+ * @param p A pointer to the task owning the file descriptors.
+ * @param fildes  Source fildes to copy on @p fildes2.
+ * @param fildes2 Destination fildes to copy on. If fildes2
+ * is already allocated, it is closed and replaced by fildes.
+ * @return 0 on success and error code < 0 on error.
+ * @retval 0 succes.
+ * @retval -EBDAF @p fildes or @p fildes2 doesn't exists.
+ */
+int task_dup_fd(task_t *p, int fildes, int fildes2);
 
 /**
  * @brief Map the console in the task file descriptor.
