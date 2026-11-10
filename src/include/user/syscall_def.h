@@ -25,7 +25,8 @@
 	X(ssize_t, read, (int fd, char *buf, size_t count))            \
 	X(int, close, (int fd))                                        \
 	X(int64_t, seek, (int fd, int64_t offset, int whence))         \
-	X(int, dup2, (int fildes, int fildes2))
+	X(int, dup2, (int fildes, int fildes2))                        \
+	X(int, pipe, (int fildes[2]))
 /* }@*/
 
 #define X_ENUM(_ret_type, name, ...) SYS_##name,

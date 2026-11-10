@@ -6,6 +6,7 @@
 
 #include <kernel/file.h>
 #include <kernel/inode.h>
+#include <kernel/pipe.h>
 #include <kernel/task.h>
 #include <user/kinterface.h>
 
@@ -37,10 +38,59 @@ struct file *file_clone(const struct file *f)
 	return new;
 }
 
+int file_pipe(struct file *files[2])
+{
+
+	struct pipe *p = pipe_alloc();
+	if (IS_ERR(p)) {
+		return PTR_ERR(p);
+	}
+
+	struct file *reader = file_alloc();
+	if (!reader) {
+		return -ENFILE;
+	}
+
+	reader->i = 0;
+	reader->mode = O_R;
+	reader->off = 0;
+	reader->refcnt = 1;
+	reader->p = p;
+	reader->r_op = pipe_read;
+
+	struct file *writer = file_alloc();
+	if (!writer) {
+		return -ENFILE;
+	}
+
+	writer->i = 0;
+	writer->mode = O_W;
+	writer->off = 0;
+	writer->refcnt = 1;
+	writer->p = p;
+	writer->w_op = pipe_write;
+
+	files[0] = reader;
+	files[1] = writer;
+
+	return 0;
+}
+
 void file_put(struct file *f)
 {
 	if (f->refcnt-- == 1) {
-		inode_put(f->i);
+		if (f->i != 0) {
+			inode_put(f->i);
+		}
+		if (f->p) {
+			if (f->mode & O_W) {
+				pipe_putw(f->p);
+			} else if (f->mode & O_R) {
+				pipe_putr(f->p);
+			} else {
+				panic("A pipe file should be either O_W or O_R. \n");
+			}
+		}
 	}
 }
 

@@ -84,3 +84,29 @@ int sys_dup2(int fildes, int fildes2)
 	task_t *active = task_active();
 	return task_dup_fd(active, fildes, fildes2);
 }
+
+int sys_pipe(int fildes[2])
+{
+	int res;
+	task_t *active = task_active();
+
+	struct file *files[2];
+	res = file_pipe(files);
+	if (res < 0) {
+		return res;
+	}
+
+	int kfildes[2];
+	kfildes[0] = task_give_fd(active, files[0]);
+	if (kfildes[0] < 0) {
+		return res;
+	}
+
+	kfildes[1] = task_give_fd(active, files[1]);
+	if (kfildes[1] < 0) {
+		return res;
+	}
+
+	return vpage_copyout(active->root_ptable, fildes, kfildes,
+			     sizeof(kfildes));
+}

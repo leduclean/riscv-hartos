@@ -30,6 +30,8 @@ typedef ssize_t (*read_cb)(struct file *f, bool user, char *buf, size_t count);
 struct file {
 	uint32_t refcnt; /**< Fork task keep might keep the same fd. */
 	struct inode *i; /**< Inode of the file */
+	struct pipe
+		*p; /**< Pipe structure of the file, NULL if not a pipe file */
 	int64_t off; /** Should never be < 0 */
 	uint8_t mode;
 
@@ -47,6 +49,16 @@ struct file {
  * @retval ERR_PTR(-Exxx) See fs_inode_from_path().
  */
 struct file *file_open(const char *path, unsigned long flags);
+
+/**
+ * @brief Allocate a pipe and its files descriptor.
+ *
+ * @param files[out] Array of pointer to the allocated pipe file.
+ * @return 0 on succes, error code < 0 on failure.
+ * @retval -ENFILE File table full.
+ * @retval -ENOMEM If it's impossible to allocate a pipe.
+ */
+int file_pipe(struct file *files[2]);
 
 /**
  * @brief Alloc an independant copy of a file descriptor.

@@ -26,11 +26,12 @@
 	X(fs_close_test, "Test close behavior on a fd", "fs_close_test")      \
 	X(fs_dup2_test, "Test dup2 behavior on a fd", "fs_dup2_test")         \
 	X(fs_seek_test, "Test the seek syscall on a fd", "fs_seek_test")      \
+	X(fs_pipe_test, "Test a pipe between 2 process", "fs_pipe_test")      \
 	X(thread_test, "Test the thread api", "thread_test")
 
 typedef void (*cmd_func_t)(int argc, char *const argv[]);
 
-#define X_DECL(n, d, u) void cmd_##n(int argc, char *const argv[]);
+#define X_DECL(n, ...) void cmd_##n(int argc, char *const argv[]);
 CMD_LIST(X_DECL)
 #undef X_DECL
 

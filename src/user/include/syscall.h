@@ -170,3 +170,16 @@ int dup2(int fildes, int fildes2);
 
  */
 int64_t seek(int fd, int64_t offset, int whence);
+
+/**
+ * @brief Create an interprocess channel.
+ *
+ * @param fildes[out] Array to the allocated file descriptor.
+ * @return 0 on succes else error code < 0.
+ *
+ * @retval 0 Success. 
+ * @retval -EMFILE Too many open file.
+ * @retval -ENFILE Process fd table full.
+ * @retval -ENOMEM No more memory to allocate a pipe.
+ */
+int pipe(int fildes[2]);
