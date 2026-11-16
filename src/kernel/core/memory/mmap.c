@@ -61,6 +61,51 @@ static void free_vmap(struct vmap *m)
 	ta_free(m);
 }
 
+static int write_back(pte_t *root, struct vmap *m)
+{
+	if (!(m->flags & MAP_SHARED)) {
+		panic("Mmap write back should only be called with MAP_SHARED policy.");
+	}
+
+	int res;
+	struct file *f = m->f;
+	res = inode_lock(f->i);
+	if (res < 0) {
+		return res;
+	}
+
+	bool written_back = false;
+	for (size_t off = 0;
+	     off < MIN(f->i->content.size, m->vm_end - m->vm_start);
+	     off += PAGE_SIZE) {
+		size_t n = MIN(f->i->content.size - off, PAGE_SIZE);
+
+		uintptr_t va = m->vm_start + off;
+		if (!vpage_is_dirty(root, va)) {
+			continue;
+		}
+
+		void *pa = vpage_get_pa_from_va(root, va, PTE_V | PTE_R);
+		vpage_clear_dirty(root, va);
+		res = inode_write(f->i, false, (void *)pa, off, n);
+		if (res < 0) {
+			goto err_unlock_inode;
+		}
+
+		written_back = true;
+	}
+	if (written_back) {
+		inode_mark_dirty(f->i);
+	}
+	inode_unlock(f->i);
+
+	return 0;
+
+err_unlock_inode:
+	inode_unlock(f->i);
+	return res;
+};
+
 static void release_mmaps(struct mm *mm)
 {
 	clist_node_t *head = &mm->vmaps;
@@ -68,7 +113,13 @@ static void release_mmaps(struct mm *mm)
 	while (cur != head) {
 		clist_node_t *next = cur->next;
 		struct vmap *m = vmap_from_node(cur);
-		//TODO: if MAP_SHARED -> write back to the file.
+		if (m->flags & MAP_SHARED) {
+			int res = write_back(mm->root, m);
+			if (res < 0) {
+				printf("[WARN] mmap: write back failed (%d)\n",
+				       res);
+			}
+		}
 		// No need to unmap: vpage_tree_free() drops the whole tree.
 		free_vmap(m);
 		cur = next;
@@ -123,6 +174,7 @@ int mmap_unmap(task_t *p, uintptr_t va, size_t len)
 		return -EINVAL;
 	}
 
+	int res;
 	clist_node_t *head = &p->mm->vmaps;
 	clist_node_t *cur = head->next;
 
@@ -136,7 +188,13 @@ int mmap_unmap(task_t *p, uintptr_t va, size_t len)
 		bool should_unmap = unmap_start <= m->vm_start &&
 				    m->vm_end <= unmap_end;
 		if (should_unmap) {
-			//TODO: if MAP_SHARED -> write back to the file.
+			if (m->flags & MAP_SHARED) {
+				res = write_back(p->mm->root, m);
+				if (res < 0) {
+					return res;
+				}
+			}
+
 			clist_remove(cur);
 			for (uintptr_t addr = m->vm_start; addr < m->vm_end;
 			     addr += PAGE_SIZE) {
@@ -177,9 +235,11 @@ static uint16_t prot_to_pte_flags(struct vmap *m)
 	}
 
 	if (m->prot & PROT_WRITE) {
-		//TODO: cow is valid only for the MAP_PRIVATE,
-		// it should be a real write on the MAP_SHARED
-		flags |= PTE_COW;
+		if (m->flags & MAP_SHARED) {
+			flags |= PTE_W;
+		} else if (m->flags & MAP_PRIVATE) {
+			flags |= PTE_COW;
+		}
 	}
 
 	return flags;
@@ -261,13 +321,8 @@ intptr_t mmap_file(task_t *p, [[maybe_unused]] uintptr_t va, struct file *f,
 		return -EACCES;
 	}
 
-	if (flags & MAP_SHARED && prot & PROT_WRITE) {
+	if (flags & MAP_SHARED && !(f->mode & O_W) && (prot & PROT_WRITE)) {
 		return -EACCES;
-	}
-
-	//TODO: remove when it will be supported
-	if (flags & MAP_SHARED) {
-		return -ENOTSUP;
 	}
 
 	clist_node_t *head = &p->mm->vmaps;
