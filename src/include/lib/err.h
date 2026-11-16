@@ -41,6 +41,7 @@
 #define ENAMETOOLONG 36 /**< File name too long */
 #define ENOSYS 38 /**< Invalid system call number */
 #define ENOTEMPTY 39 /**< Directory not empty */
+#define ENOTSUP 40 /**< Not supported feature */
 
 #define MAX_ERRNO 4095
 

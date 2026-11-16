@@ -48,3 +48,23 @@ typedef __PTRDIFF_TYPE__ ssize_t;
 #define EXEC_MAX_ARGS 7 /**< Max number of exec() arguments. */
 
 #define NOFILE 16 /**< Max number of file descriptor */
+
+/**
+ * @name mmap() memory options.
+ * @{
+ */
+#define PROT_READ (1 << 0) /**< Mem should be mapped readable.  */
+#define PROT_WRITE (1 << 1) /**< Mem should be mapped writable. */
+/** @} */
+
+/**
+ * @name Flags of the mmap() syscall.
+ * 
+ * This is an exhaustive list of the flags supporter by
+ * this OS. But linux supports a largest set of flags.
+ * @{
+ */
+#define MAP_SHARED (1 << 0) /**< Modification should be written back to file. */
+#define MAP_PRIVATE \
+	(1 << 1) /**< Modification should not be written back to file. */
+/** @} */

@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include <lib/err.h>
+#include <lib/minmax.h>
 #include <lib/string.h>
 
 #include <kernel/elf.h>
@@ -220,8 +221,6 @@ static int map_phdr(pte_t *root, struct file *f, const struct elf_phdr *phdr)
 
 	return phdr->va + phdr->memsz;
 }
-
-#define MAX(a, b) (a) < (b) ? (b) : (a)
 
 intptr_t elf_map(pte_t *root, struct file *f, const struct elf_hdr *hdr)
 {

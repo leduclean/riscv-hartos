@@ -51,6 +51,8 @@ typedef struct task {
 	ctx_t ctx; ///< Registers saved on a context switch.
 	uint64_t kstack[KSTACK_SIZE]; ///< Task stack.
 	pte_t *root_ptable; ///< Task Root Page table.
+	clist_node_t va_node; ///< List head of va mapping of the task.
+	uintptr_t brk; ///< End of the program.
 	bool user; ///< User mode Task flag (fixed at creation).
 	tframe_t *
 		tframe_pa; //< The User trap frame used to save the user context.

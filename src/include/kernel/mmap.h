@@ -5,8 +5,27 @@
  */
 
 #include <stddef.h>
+#include <stdint.h>
+
+#include <lib/clist.h>
 
 #include <kernel/task.h>
+
+/**
+ * @class vmap
+ * @brief Virtual user maping used to keep track of the mmap elements 
+ * of a task.
+ *
+ */
+struct vmap {
+	clist_node_t node;
+
+	uintptr_t vm_start;
+	uintptr_t vm_end;
+	uint16_t flags;
+	uint16_t prot;
+	struct file *f;
+};
 
 extern char _trampoline_start[], _trampoline_end[];
 
@@ -28,6 +47,54 @@ int mmap_kernel(void);
  * @retval -ENOMEM Out of memory.
  */
 int iommap_kernel(void *addr, size_t size);
+
+/**
+ * @brief Memory map a file @p f.
+ *
+ * @param p Task pcb.
+ * @param va TODO: For now va is ignored and a random free va is given.
+ * @param f File to map to a va.
+ * @param len Size of the file to mmap.
+ * @param prot Protections on the mapping, see PROT_X.
+ * @param flags Memory mapping policy, see MAP_X.
+ * @retval -EINVAL if len is zero.
+ * @retval -EMFILE if they are too many mapping.
+ * @retval -ENOMEM if it's impossible to allocate a mapping. 
+ * @retval -EBDAF if file is not supplied.
+ * @retval -EACCES if there is flags/prot/files incoherency.
+ */
+intptr_t mmap_file(task_t *p, [[maybe_unused]] uintptr_t va, struct file *f,
+		   size_t len, uint16_t prot, uint16_t flags);
+
+/**
+ * @brief Unmap regions between [va, va + len] page aligned.
+ *
+ * @param p Task pcb.
+ * @param va Virtual base adress for the unmap
+ * @param len Size of the regions range to unmap.
+ * @retval 0 Success.
+ * @retval -EINVAL if this dosn't match any mapped region.
+ * @retval -EINVAL if len = 0
+ */
+int mmap_unmap(task_t *p, uintptr_t va, size_t len);
+
+/**
+ * @brief Resolve a virtual address mapping.
+ *
+ * @param p Task pcb.
+ * @param va Virtual adress of the address that has faulted.
+ * @return -EINVAL if the maping has no file
+ * @return -ENOENT if no corresponding mapping.
+ * @return -ENOMEM if there is no sufficiant memory to lazy allocate a page on the fault.
+ */
+int mmap_resolve_va(task_t *p, uintptr_t va);
+
+/**
+ * @brief Release all the mapping structure of a task.
+ *
+ * @param p Task pcb.
+ */
+void mmap_release_all(task_t *p);
 
 /**
  * @brief Allocate and map what each user task owns (root pd and a trapframe).

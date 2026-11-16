@@ -1,7 +1,6 @@
-#include "syscall.h"
-
 #include <stddef.h>
 
+#include <kinterface.h>
 #include <syscall_def.h>
 
 /**

@@ -13,6 +13,7 @@
 
 #include <lib/bitmap.h>
 #include <lib/err.h>
+#include <lib/minmax.h>
 #include <lib/string.h>
 
 #include <drivers/virtio_blk.h>
@@ -470,8 +471,6 @@ void inode_put(struct inode *i)
 	i->refcnt--;
 	spinlock_unlock(&cache_lock);
 }
-
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 ssize_t inode_write(struct inode *i, bool user_src, const char *src,
 		    uint32_t offset, size_t count)

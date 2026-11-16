@@ -183,3 +183,8 @@ int64_t seek(int fd, int64_t offset, int whence);
  * @retval -ENOMEM No more memory to allocate a pipe.
  */
 int pipe(int fildes[2]);
+
+void *mmap(void *addr, size_t len, int prot, int flags, int fildes,
+	   int64_t off);
+
+int munmap(void *addr, size_t len);

@@ -11,6 +11,7 @@
 #include <arch/trap.h>
 #include <kernel/elf.h>
 #include <kernel/file.h>
+#include <kernel/mem_layout.h>
 #include <kernel/mmap.h>
 #include <kernel/pages.h>
 #include <kernel/scheduler.h>
@@ -103,6 +104,7 @@ static inline void init_task_queues(task_t *task)
 	clist_init_node(&task->wait_node);
 	clist_init_node(&task->sleep_node);
 	clist_init_node(&task->zombies);
+	clist_init_node(&task->va_node);
 	wq_init(&task->zombie_wq);
 }
 
@@ -274,8 +276,9 @@ void task_destroy(task_t *task)
 	remove_from_all_queues(task);
 
 	pte_t *root = task->root_ptable;
-	if (task->user && root) {
+	if (root) {
 		vpage_unmmap(task->root_ptable, (void *)task->tframe_va);
+		mmap_release_all(task);
 		if (page_get_ref_count(root) == 1) {
 			vpage_tree_free(task->root_ptable);
 		} else {
@@ -485,6 +488,8 @@ err_restore_irq:
 task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 		   unsigned long flags)
 {
+	//TODO: maybe we should copy the MMAP section on fork ?
+
 	if (!parent->user) {
 		panic("Only fork for user task is supported ");
 	}

@@ -26,8 +26,12 @@
 	X(int, close, (int fd))                                        \
 	X(int64_t, seek, (int fd, int64_t offset, int whence))         \
 	X(int, dup2, (int fildes, int fildes2))                        \
-	X(int, pipe, (int fildes[2]))
-/* }@*/
+	X(int, pipe, (int fildes[2]))                                  \
+	X(void *, mmap,                                                \
+	  (void *addr, size_t len, int prot, int flags, int fildes,    \
+	   int64_t off))                                               \
+	X(int, munmap, (void *addr, size_t len))                       \
+	/* }@*/
 
 #define X_ENUM(_ret_type, name, ...) SYS_##name,
 enum { SYSCALLS(X_ENUM) SYS_NBR };

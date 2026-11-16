@@ -174,3 +174,55 @@ void cmd_fs_seek_test([[maybe_unused]] int argc,
 
 	TEST_SUCCESS();
 }
+void cmd_mmap_test([[maybe_unused]] int argc,
+		   [[maybe_unused]] char *const argv[])
+{
+	int fd = open(FS_TEST_FILE, O_CREAT | O_W | O_R);
+	if (fd < 0) {
+		TEST_ERROR("open failed: %d", fd);
+	}
+
+	// Pages fully past EOF fault (POSIX SIGBUS): back the 3 pages with data.
+	static char page[4096];
+	for (int i = 0; i < 3; i++) {
+		memset(page, '0' + i, sizeof(page));
+		TEST_ASSERT_EQ(sizeof(page), write(fd, page, sizeof(page)));
+	}
+
+	size_t size = 3 * 4096;
+	void *va = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+	if (IS_ERR(va)) {
+		TEST_ERROR("mmap failed with %lu", PTR_ERR(va));
+	}
+	close(fd);
+
+	// Faults must load the file content
+	char *ptr = (char *)va;
+	if (ptr[0] != '0' || ptr[4096] != '1' || ptr[8192] != '2') {
+		TEST_ERROR("Memory content mismatch with the file");
+	}
+
+	// Multipage writing
+	ptr[0] = 'A';
+	ptr[4096] = 'B';
+	ptr[8192] = 'C';
+
+	if (ptr[0] != 'A' || ptr[4096] != 'B' || ptr[8192] != 'C') {
+		TEST_ERROR("Memory content mismatch after page faults");
+	}
+
+	// Invalid munmap
+	int res = munmap((void *)0x7fffffff0000, 4096);
+	if (res >= 0) {
+		TEST_ERROR("munmap succeeded on invalid address (should fail)");
+	}
+
+	res = munmap(va, size);
+	if (res < 0) {
+		TEST_ERROR("munmap failed with %d", res);
+	}
+
+	// ptr[0] = 'X';
+
+	TEST_SUCCESS();
+}

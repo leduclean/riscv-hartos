@@ -8,9 +8,9 @@
 #include <arch/plic.h>
 #include <arch/trap.h>
 #include <kernel/mmap.h>
-#include <kernel/task.h>
 #include <kernel/scheduler.h>
 #include <kernel/syscall.h>
+#include <kernel/task.h>
 #include <kernel/time.h>
 #include <kernel/vpages.h>
 
@@ -51,7 +51,7 @@ static inline void init_stvec(void (*entry)(void))
  * @param tval Trap value of the exception m/stval.
  */
 static inline void panic_print(unsigned long cause, unsigned long pc,
-				unsigned long tval)
+			       unsigned long tval)
 {
 	if (cause & XCAUSE_IRQ_BIT) {
 		cause &= XCAUSE_IRQ_BIT;
@@ -85,7 +85,7 @@ static inline void machine_trap_panic(void)
  * @param t A pointer to the saved register of the trap.
  */
 static inline void kernel_trap_panic(unsigned long scause, unsigned long sepc,
-				      unsigned long stval)
+				     unsigned long stval)
 {
 	printf("[PANIC]: FROM KERNEL \n");
 	panic_print(scause, sepc, stval);
@@ -162,6 +162,9 @@ void usertrap(void)
 		}
 			__attribute__((fallthrough));
 		case LOAD_PAGE_FAULT:
+			if (mmap_resolve_va(p, stval) == 0) {
+				break;
+			}
 		case INSTRUCTION_PAGE_FAULT: {
 			printf("[Kernel]: SEGFAULT - va 0x%lx, epc 0x%lx, cause %ld (pid %d)\n",
 			       stval, t->sepc, scause, p->pid);
