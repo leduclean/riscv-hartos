@@ -10,6 +10,9 @@
 
 #include <user/kinterface.h>
 
+/* Marks a user-space pointer: never dereference it, go through vpage_copy*. */
+#define __user
+
 typedef unsigned long pte_t;
 typedef uint32_t ppn_t;
 
@@ -40,9 +43,9 @@ typedef uint32_t ppn_t;
  * @retval 0 Success.
  * @retval -ENOMEM Out of memory.
  */
-int vpage_map(pte_t *root, const void *va, void *pa, unsigned long flags);
+int vpage_map(pte_t *root, uintptr_t va, void *pa, unsigned long flags);
 
-static inline int vpage_map_user(pte_t *root, const void *va, void *pa,
+static inline int vpage_map_user(pte_t *root, uintptr_t va, void *pa,
 				 unsigned long flags)
 {
 	return vpage_map(root, va, pa, PTE_U | flags);
@@ -56,7 +59,7 @@ static inline int vpage_map_user(pte_t *root, const void *va, void *pa,
  * @retval 0 Success.
  * @retval -EINVAL @p va isn't mapped.
  */
-int vpage_unmmap(pte_t *root, void *va);
+int vpage_unmmap(pte_t *root, uintptr_t va);
 
 /**
  * @brief Memory map a virtual address range to a physical address range of a page table.
@@ -72,10 +75,10 @@ int vpage_unmmap(pte_t *root, void *va);
  * @retval 0 Success.
  * @retval -ENOMEM Out of memory.
  */
-int vpage_map_range(pte_t *root, void *va, void *pa, size_t size,
+int vpage_map_range(pte_t *root, uintptr_t va, void *pa, size_t size,
 		    unsigned long flags);
 
-static inline int vpage_map_user_range(pte_t *root, void *va, void *pa,
+static inline int vpage_map_user_range(pte_t *root, uintptr_t va, void *pa,
 				       size_t size, unsigned long flags)
 {
 	return vpage_map_range(root, va, pa, size, PTE_U | flags);
@@ -115,7 +118,7 @@ int vpage_tree_copy(pte_t *dst, pte_t *src);
  * @retval -EFAULT @p va is not a CoW page.
  * @retval -ENOMEM Out of memory.
  */
-int vpage_handle_cow(pte_t *root, const void *va);
+int vpage_handle_cow(pte_t *root, uintptr_t va);
 
 /**
  * @brief Copy @count byte from a virtual address to a destination.
@@ -127,7 +130,8 @@ int vpage_handle_cow(pte_t *root, const void *va);
  * @retval 0 Success.
  * @retval -EFAULT Bad user address.
  */
-int vpage_copyin(pte_t *root, void *dst, const void *va, size_t count);
+int vpage_copyin(pte_t *root, void *dst, const void __user *va,
+		 size_t count);
 
 /**
  * @brief Copy in a kernel destination buffer a user virtual address.
@@ -140,7 +144,8 @@ int vpage_copyin(pte_t *root, void *dst, const void *va, size_t count);
  * @retval -EFAULT Bad user address.
  * @retval -ENAMETOOLONG No NUL within @p max.
  */
-ssize_t vpage_copyinstr(pte_t *root, char *dst, const char *va, size_t max);
+ssize_t vpage_copyinstr(pte_t *root, char *dst, const char __user *va,
+			size_t max);
 
 /**
  * @brief Copy @count byte from a physical address to a virtual address.
@@ -152,7 +157,7 @@ ssize_t vpage_copyinstr(pte_t *root, char *dst, const char *va, size_t max);
  * @retval 0 Success.
  * @retval -EFAULT Bad user address.
  */
-int vpage_copyout(pte_t *root, void *va, const void *src, size_t count);
+int vpage_copyout(pte_t *root, void __user *va, const void *src, size_t count);
 
 /**
  * @brief Copy in a kernel destination buffer a user virtual address.
@@ -165,5 +170,5 @@ int vpage_copyout(pte_t *root, void *va, const void *src, size_t count);
  * @retval -EFAULT Bad user address.
  * @retval -ENAMETOOLONG No NUL within @p max.
  */
-ssize_t vpage_copyoutstr(
-pte_t *root, char *va, const char *src, size_t max);
+ssize_t vpage_copyoutstr(pte_t *root, char __user *va, const char *src,
+			 size_t max);

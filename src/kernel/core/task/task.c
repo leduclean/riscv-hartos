@@ -277,7 +277,7 @@ void task_destroy(task_t *task)
 
 	pte_t *root = task->root_ptable;
 	if (root) {
-		vpage_unmmap(task->root_ptable, (void *)task->tframe_va);
+		vpage_unmmap(task->root_ptable, task->tframe_va);
 		mmap_release_all(task);
 		if (page_get_ref_count(root) == 1) {
 			vpage_tree_free(task->root_ptable);
@@ -390,7 +390,7 @@ static int transfer_argv(pte_t *old_ptable, pte_t *new_ptable,
 
 		sp = ALIGN_DOWN(sp - len, STACK_ALIGN);
 
-		len = vpage_copyoutstr(new_ptable, (char *)sp, arg, len);
+		len = vpage_copyoutstr(new_ptable, (char __user *)sp, arg, len);
 		if (len < 0) {
 			return len;
 		}
@@ -402,14 +402,14 @@ static int transfer_argv(pte_t *old_ptable, pte_t *new_ptable,
 	sp = ALIGN_DOWN(sp - argv_size, STACK_ALIGN);
 
 	/* Copy back argc */
-	int res = vpage_copyout(new_ptable, (void *)sp, argv_tmp, argv_size);
+	int res = vpage_copyout(new_ptable, (void __user *)sp, argv_tmp, argv_size);
 	if (res < 0) {
 		return res;
 	}
 
 	/* Then copy the new argv table pointers */
 	sp = ALIGN_DOWN(sp - sizeof(argc), STACK_ALIGN);
-	res = vpage_copyout(new_ptable, (void *)sp, &argc, sizeof(argc));
+	res = vpage_copyout(new_ptable, (void __user *)sp, &argc, sizeof(argc));
 	if (res < 0) {
 		return res;
 	}
@@ -542,7 +542,7 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 	}
 
 	// Map the trap frame into the table
-	res = vpage_map(child->root_ptable, (void *)child->tframe_va, t,
+	res = vpage_map(child->root_ptable, child->tframe_va, t,
 			PTE_R | PTE_W);
 	if (res < 0) {
 		// t failed to get mapped so no in the tree yet

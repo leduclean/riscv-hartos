@@ -95,7 +95,7 @@ int mmap_unmap(task_t *p, uintptr_t va, size_t len)
 			clist_remove(cur);
 			for (uintptr_t addr = m->vm_start; addr < m->vm_end;
 			     addr += PAGE_SIZE) {
-				vpage_unmmap(p->root_ptable, (void *)addr);
+				vpage_unmmap(p->root_ptable, addr);
 			}
 			free_vmap(m);
 		}
@@ -182,7 +182,7 @@ int mmap_resolve_va(task_t *p, uintptr_t va)
 	}
 	inode_unlock(i);
 
-	res = vpage_map_user(p->root_ptable, (void *)ALIGN_DOWN(va, PAGE_SIZE),
+	res = vpage_map_user(p->root_ptable, ALIGN_DOWN(va, PAGE_SIZE),
 			     buf, prot_to_pte_flags(m));
 	if (res < 0) {
 		goto err_put_page;
@@ -264,7 +264,7 @@ int iommap_kernel(void *addr, size_t size)
 {
 	int res;
 
-	res = vpage_map_range(kroot, addr, addr, size, PTE_R | PTE_W);
+	res = vpage_map_range(kroot, (uintptr_t)addr, addr, size, PTE_R | PTE_W);
 	if (res < 0) {
 		return res;
 	}
@@ -281,33 +281,33 @@ int mmap_kernel(void)
 		return -ENOMEM;
 	}
 
-	res = vpage_map_range(kroot, (void *)_ram_start, (void *)_ram_start,
+	res = vpage_map_range(kroot, (uintptr_t)_ram_start, (void *)_ram_start,
 			      _ram_end - _ram_start, PTE_R | PTE_W | PTE_X);
 	if (res < 0) {
 		goto err_free_root;
 	}
 
-	res = vpage_map_range(kroot, (void *)TRAMPOLINE, _trampoline_start,
+	res = vpage_map_range(kroot, TRAMPOLINE, _trampoline_start,
 			      _trampoline_end - _trampoline_start,
 			      PTE_X | PTE_R);
 	if (res < 0) {
 		goto err_free_root;
 	}
 
-	res = vpage_map(kroot, (void *)UART_BASE, (void *)UART_BASE,
+	res = vpage_map(kroot, UART_BASE, (void *)UART_BASE,
 			PTE_R | PTE_W);
 	if (res < 0) {
 		goto err_free_root;
 	}
 
-	res = vpage_map_range(kroot, (void *)PCI_ECAM_BASE_ADDRESS,
+	res = vpage_map_range(kroot, PCI_ECAM_BASE_ADDRESS,
 			      (void *)PCI_ECAM_BASE_ADDRESS, PCI_ECAM_SIZE,
 			      PTE_R | PTE_W);
 	if (res < 0) {
 		goto err_free_root;
 	}
 
-	res = vpage_map_range(kroot, (void *)PLIC_MMIO_BASE,
+	res = vpage_map_range(kroot, PLIC_MMIO_BASE,
 			      (void *)PLIC_MMIO_BASE, PLIC_MMIO_SIZE,
 			      PTE_R | PTE_W);
 	if (res < 0) {
@@ -343,7 +343,7 @@ int mmap_uspace(task_t *p)
 		goto err_free_tree;
 	}
 
-	res = vpage_map(root, (void *)TRAPFRAME, t, PTE_R | PTE_W);
+	res = vpage_map(root, TRAPFRAME, t, PTE_R | PTE_W);
 	if (res < 0) {
 		// t failed to get mapped so no in the tree yet
 		goto err_free_tframe;
@@ -376,7 +376,7 @@ int mmap_uimage(task_t *p)
 
 	// This is not U page because we will go back to user page
 	// in S mode before the sret returns to user mode.
-	res = vpage_map_range(root, (void *)TRAMPOLINE, _trampoline_start,
+	res = vpage_map_range(root, TRAMPOLINE, _trampoline_start,
 			      _trampoline_end - _trampoline_start,
 			      PTE_X | PTE_R | PTE_G);
 	if (res < 0) {
@@ -391,7 +391,7 @@ int mmap_uimage(task_t *p)
 		goto err_free_tree;
 	}
 
-	res = vpage_map_user(root, (void *)USTACK_TOP, stack, PTE_R | PTE_W);
+	res = vpage_map_user(root, USTACK_TOP, stack, PTE_R | PTE_W);
 	if (res < 0) {
 		page_put(stack);
 		goto err_free_tree;

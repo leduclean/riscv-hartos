@@ -211,7 +211,7 @@ static int map_phdr(pte_t *root, struct file *f, const struct elf_phdr *phdr)
 			}
 		}
 
-		res = vpage_map_user(root, (void *)phdr->va + off, page,
+		res = vpage_map_user(root, phdr->va + off, page,
 				     phdr_flag_to_pte_flag(phdr->flags));
 		if (res < 0) {
 			page_put(page);
