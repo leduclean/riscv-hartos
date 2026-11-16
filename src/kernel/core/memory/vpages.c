@@ -82,10 +82,7 @@ int vpage_map(pte_t *root, const void *va, void *pa, unsigned long flags)
 	}
 
 	pte_t *leaf_pte = get_pte(table, va, 0);
-	unsigned long pte_flags = flags | PTE_V | PTE_A;
-
-	if (flags & PTE_W)
-		pte_flags |= PTE_D;
+	unsigned long pte_flags = flags | PTE_V;
 
 	*leaf_pte = (page_get_num(pa) << PTE_PPN_SHIFT) | pte_flags;
 
@@ -207,7 +204,7 @@ static inline uint32_t get_flags(pte_t pte)
 }
 
 static inline void *get_pa_from_va(pte_t *root, const void *va,
-				    unsigned long needed_flags)
+				   unsigned long needed_flags)
 {
 	pte_t *leaf = walk_leaf(root, va);
 	if (!leaf) {
@@ -242,7 +239,7 @@ int vpage_copyin(pte_t *root, void *dst, const void *va, size_t count)
 ssize_t vpage_copyinstr(pte_t *root, char *dst, const char *va, size_t max)
 {
 	const char *pa = get_pa_from_va(root, (void *)va,
-					 PTE_V | PTE_U | PTE_R);
+					PTE_V | PTE_U | PTE_R);
 	if (!pa) {
 		return -EFAULT;
 	}
@@ -340,7 +337,7 @@ static int copy_level(pte_t *dst, pte_t *src, int lvl, unsigned long va)
 		int res;
 		if (is_a_next_lvl_ptr(pte)) {
 			res = copy_level(dst, get_next_lvl_pte(pte), lvl - 1,
-					  child_va);
+					 child_va);
 			if (res < 0) {
 				return res;
 			}
