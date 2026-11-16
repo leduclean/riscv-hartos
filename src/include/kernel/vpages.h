@@ -121,6 +121,33 @@ int vpage_tree_copy(pte_t *dst, pte_t *src);
 int vpage_handle_cow(pte_t *root, uintptr_t va);
 
 /**
+ * @brief Test the dirty bit.
+ *
+ * @param root A pointer to the root page directory.
+ * @param va Virtual adress to check.
+ */
+bool vpage_is_dirty(pte_t *root, const uintptr_t va);
+
+/**
+ * @brief Clear the dirty bit.
+ *
+ * @note No side effect if the bit D is not set.
+ * @param root A pointer to the root page directory.
+ * @param va Virtual address to clear.
+ */
+void vpage_clear_dirty(pte_t *root, uintptr_t va);
+
+/** 
+ * @brief Getst the physical adress from the va.
+ *
+ * @param root A pointer to the root page directory.
+ * @param va Virtual adress to translate
+ * @param needed_flags Needed persmissions.
+ */
+void *vpage_get_pa_from_va(pte_t *root, uintptr_t va,
+			   unsigned long needed_flags);
+
+/**
  * @brief Copy @count byte from a virtual address to a destination.
  *
  * @param root The root page directory of emitted va.
@@ -130,8 +157,7 @@ int vpage_handle_cow(pte_t *root, uintptr_t va);
  * @retval 0 Success.
  * @retval -EFAULT Bad user address.
  */
-int vpage_copyin(pte_t *root, void *dst, const void __user *va,
-		 size_t count);
+int vpage_copyin(pte_t *root, void *dst, const void __user *va, size_t count);
 
 /**
  * @brief Copy in a kernel destination buffer a user virtual address.

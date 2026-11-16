@@ -199,8 +199,8 @@ static inline uint32_t get_flags(pte_t pte)
 	return pte & PTE_FLAGS_MASK;
 }
 
-static inline void *get_pa_from_va(pte_t *root, uintptr_t va,
-				   unsigned long needed_flags)
+void *vpage_get_pa_from_va(pte_t *root, uintptr_t va,
+			   unsigned long needed_flags)
 {
 	pte_t *leaf = walk_leaf(root, va);
 	if (!leaf) {
@@ -222,7 +222,8 @@ static inline void *get_pa_from_va(pte_t *root, uintptr_t va,
 
 int vpage_copyin(pte_t *root, void *dst, const void __user *va, size_t count)
 {
-	void *pa = get_pa_from_va(root, (uintptr_t)va, PTE_V | PTE_U | PTE_R);
+	void *pa = vpage_get_pa_from_va(root, (uintptr_t)va,
+					PTE_V | PTE_U | PTE_R);
 	if (!pa) {
 		return -EFAULT;
 	}
@@ -235,8 +236,8 @@ int vpage_copyin(pte_t *root, void *dst, const void __user *va, size_t count)
 ssize_t vpage_copyinstr(pte_t *root, char *dst, const char __user *va,
 			size_t max)
 {
-	const char *pa =
-		get_pa_from_va(root, (uintptr_t)va, PTE_V | PTE_U | PTE_R);
+	const char *pa = vpage_get_pa_from_va(root, (uintptr_t)va,
+					      PTE_V | PTE_U | PTE_R);
 	if (!pa) {
 		return -EFAULT;
 	}
@@ -259,7 +260,8 @@ ssize_t vpage_copyinstr(pte_t *root, char *dst, const char __user *va,
 
 int vpage_copyout(pte_t *root, void __user *va, const void *src, size_t count)
 {
-	void *pa = get_pa_from_va(root, (uintptr_t)va, PTE_V | PTE_U | PTE_W);
+	void *pa = vpage_get_pa_from_va(root, (uintptr_t)va,
+					PTE_V | PTE_U | PTE_W);
 	if (!pa) {
 		return -EFAULT;
 	}
@@ -272,7 +274,8 @@ int vpage_copyout(pte_t *root, void __user *va, const void *src, size_t count)
 ssize_t vpage_copyoutstr(pte_t *root, char __user *va, const char *src,
 			 size_t max)
 {
-	char *pa = get_pa_from_va(root, (uintptr_t)va, PTE_V | PTE_U | PTE_W);
+	char *pa = vpage_get_pa_from_va(root, (uintptr_t)va,
+					PTE_V | PTE_U | PTE_W);
 	if (!pa) {
 		return -EFAULT;
 	}
@@ -285,6 +288,32 @@ ssize_t vpage_copyoutstr(pte_t *root, char __user *va, const char *src,
 
 	memcpy(pa, src, size + 1);
 	return size + 1;
+}
+
+bool vpage_is_dirty(pte_t *root, const uintptr_t va)
+{
+	pte_t *leaf = walk_leaf(root, va);
+	if (!leaf) {
+		return false;
+	}
+	if (get_flags(*leaf) & PTE_D) {
+		return true;
+	}
+
+	return false;
+}
+
+void vpage_clear_dirty(pte_t *root, uintptr_t va)
+{
+	pte_t *leaf = walk_leaf(root, va);
+	if (!leaf) {
+		return;
+	}
+
+	if (get_flags(*leaf) & PTE_D) {
+		*leaf &= ~PTE_D;
+		mmu_update_va((void *)va);
+	}
 }
 
 int vpage_handle_cow(pte_t *root, uintptr_t va)
