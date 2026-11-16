@@ -359,9 +359,10 @@ err_release:
 	return blkno;
 }
 
-int32_t _get_data_locked(struct inode *i, uint32_t nth)
+static int32_t get_blkno_locked(struct inode *i, uint32_t offset)
 {
 	int32_t res;
+	uint32_t nth = offset / FS_BLK_SIZE;
 	if (nth >= FS_INODE_DIR_DBLKNO + FS_INODE_INDIR_DBLKNO) {
 		return -EFBIG;
 	}
@@ -493,7 +494,7 @@ ssize_t inode_write(struct inode *i, bool user_src, const char *src,
 		// Byte to process in the block
 		m = MIN(count - done, FS_BLK_SIZE - blk_off);
 
-		int32_t dblkno = _get_data_locked(i, offset / FS_BLK_SIZE);
+		int32_t dblkno = get_blkno_locked(i, offset);
 		if (dblkno < 0) {
 			res = dblkno;
 			goto out;
@@ -546,7 +547,7 @@ ssize_t inode_read(struct inode *i, bool user_src, char *dst, uint32_t offset,
 		uint32_t blk_off = offset % FS_BLK_SIZE;
 		m = MIN(count - done, FS_BLK_SIZE - blk_off);
 
-		int32_t dblkno = _get_data_locked(i, offset / FS_BLK_SIZE);
+		int32_t dblkno = get_blkno_locked(i, offset);
 		if (dblkno < 0) {
 			res = dblkno;
 			goto out;
