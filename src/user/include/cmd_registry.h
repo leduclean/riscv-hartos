@@ -30,7 +30,8 @@
 	X(mmap_test, "Test the mmap behavior", "mmap_test")                   \
 	X(mmap_shr_test, "MAP_SHARED write back on munmap", "mmap_shr_test")  \
 	X(mmap_exit_test, "MAP_SHARED write back on exit", "mmap_exit_test")  \
-	X(thread_test, "Test the thread api", "thread_test")
+	X(thread_test, "Test the thread api", "thread_test")                  \
+	X(mmap_thr_test, "Mmap shared between threads", "mmap_thr_test")
 
 typedef void (*cmd_func_t)(int argc, char *const argv[]);
 
