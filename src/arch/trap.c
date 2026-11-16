@@ -145,6 +145,9 @@ void usertrap(void)
 		unsigned long irq_cause = scause & ~XCAUSE_IRQ_BIT;
 		handler_async_irq(irq_cause);
 	} else {
+		// Kernel syscall is premptable
+		irq_enable_s();
+
 		switch (scause) {
 		case ECALL_UMODE:
 			t->sepc += 4;
@@ -177,7 +180,7 @@ void usertrap(void)
 		}
 		}
 	}
-
+	irq_disable_s();
 	trap_return_to_user();
 }
 

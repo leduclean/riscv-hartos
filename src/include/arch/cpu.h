@@ -58,6 +58,11 @@ inline static void irq_enable_s(void)
 	csr_set(sstatus, SSTATUS_SIE);
 }
 
+static inline bool irq_is_enable_s(void)
+{
+	return csr_read(sstatus) & SSTATUS_SIE;
+}
+
 /** @brief Disable the interrupts at the supervisor level. */
 inline static void irq_disable_s(void)
 {

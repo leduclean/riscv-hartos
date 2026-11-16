@@ -160,6 +160,10 @@ void mm_put(struct mm *mm)
 		return;
 	}
 
+	if (!irq_is_enable_s()) {
+		panic("This should be call with irq on.");
+	}
+
 	release_mmaps(mm);
 	vpage_tree_free(mm->root);
 	ta_free(mm);
