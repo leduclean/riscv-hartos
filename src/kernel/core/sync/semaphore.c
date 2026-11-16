@@ -1,16 +1,14 @@
 #include <stdint.h>
 
 #include <lib/clist.h>
+#include <lib/container.h>
 #include <lib/err.h>
 
-#include <lib/container.h>
-
 #include <arch/cpu.h>
-
-#include <kernel/task.h>
 #include <kernel/scheduler.h>
 #include <kernel/semaphore.h>
 #include <kernel/spinlock.h>
+#include <kernel/task.h>
 #include <kernel/waitqueue.h>
 
 void sem_init(semaphore_t *sem, int val)
@@ -42,6 +40,7 @@ int sem_try_take(semaphore_t *sem)
 
 void sem_wait(semaphore_t *sem)
 {
+	might_sleep();
 	unsigned long flags = spinlock_lock_irq_save(&sem->lock);
 
 	if (sem_try_take_unlocked(sem) < 0) {

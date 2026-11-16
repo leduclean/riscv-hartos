@@ -9,10 +9,12 @@
 
 #include <arch/csr.h>
 
+#include "kernel/scheduler.h"
+
 /**
  * @brief Memory barrier for IO DMA coherency.
  */
-inline static void m2m_rmb(void)
+static inline void m2m_rmb(void)
 {
 	__asm__ __volatile__("fence r, r" ::: "memory");
 }
@@ -20,7 +22,7 @@ inline static void m2m_rmb(void)
 /**
  * @brief Memory barrier for write coherency on a write.
  */
-inline static void m2m_wmb(void)
+static inline void m2m_wmb(void)
 {
 	__asm__ __volatile__("fence w, w" ::: "memory");
 }
@@ -29,31 +31,31 @@ inline static void m2m_wmb(void)
  * @brief Memory barrier for RAM-to-MMIO/RAM Write coherency.
  *        Ensures prior RAM writes complete before subsequent RAM or MMIO writes
  */
-inline static void m2io_wmb(void)
+static inline void m2io_wmb(void)
 {
 	__asm__ __volatile__("fence w, ow" ::: "memory");
 }
 
 /** @brief Put the cpu in pause, waiting for an interrupt. */
-inline static void hlt(void)
+static inline void hlt(void)
 {
 	__asm__ __volatile__("wfi" ::: "memory");
 }
 
 /** @brief Enable the interrupts at the machine level. */
-inline static void irq_enable_m(void)
+static inline void irq_enable_m(void)
 {
 	csr_set(mstatus, MSTATUS_MIE);
 }
 
 /** @brief Disable the interrupts at the machine level. */
-inline static void irq_disable_m(void)
+static inline void irq_disable_m(void)
 {
 	csr_clear(mstatus, MSTATUS_MIE);
 }
 
 /** @brief Enable the interrupts at the supervisor level. */
-inline static void irq_enable_s(void)
+static inline void irq_enable_s(void)
 {
 	csr_set(sstatus, SSTATUS_SIE);
 }
@@ -79,6 +81,20 @@ inline static void irq_disable_s(void)
 
 /** @brief Halt the kernel, reporting @msg and where it was raised. */
 #define panic(msg) _panic((msg), __FILE__, __LINE__)
+
+static inline void _might_sleep(const char *file, int line)
+{
+	/** Check that we are not spining or in a critical section when 
+     * sleeping. */
+	if (!(irq_is_enable_s() && scheduler_preemptible())) {
+		printf("At %p \n", __builtin_return_address(0));
+		_panic("Sleeping function called with irq on.", file, line);
+	}
+}
+/**
+ * @brief Guard that check irq are enabled for sleeping funtion. 
+ */
+#define might_sleep() _might_sleep(__FILE__, __LINE__)
 
 /** @brief Saved interrupt state, as returned by irq_save(). */
 typedef unsigned long irq_flags_t;

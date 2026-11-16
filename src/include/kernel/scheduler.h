@@ -6,8 +6,27 @@
 #pragma once
 #include <stdint.h>
 
-#include <kernel/task.h>
 #include <kernel/spinlock.h>
+#include <kernel/task.h>
+
+/**
+ * @brief Preemption state of the scheduler. 
+ */
+bool scheduler_preemptible(void);
+
+static inline void _might_sleep(const char *file, int line)
+{
+	/** Check that we are not spining or in a critical section when
+     * sleeping. */
+	if (!(irq_is_enable_s() && scheduler_preemptible())) {
+		printf("At %p \n", __builtin_return_address(0));
+		_panic("Sleeping function called with irq on.", file, line);
+	}
+}
+/**
+ * @brief Guard that check irq are enabled for sleeping funtion.
+ */
+#define might_sleep() _might_sleep(__FILE__, __LINE__)
 
 /**
  * @brief Use this function before @scheduler_enable_preempt for a no switch section.

@@ -297,6 +297,11 @@ void scheduler_disable_preempt(void)
 	preempt_count++;
 }
 
+bool scheduler_preemptible(void)
+{
+	return preempt_count == 0;
+}
+
 void scheduler_enable_preempt(void)
 {
 	preempt_count--;

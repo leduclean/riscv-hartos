@@ -3,15 +3,13 @@
 #include <lib/clist.h>
 #include <lib/container.h>
 #include <lib/err.h>
-
 #include <lib/string.h>
 
 #include <arch/cpu.h>
-
 #include <kernel/mutex.h>
-#include <kernel/task.h>
 #include <kernel/scheduler.h>
 #include <kernel/spinlock.h>
+#include <kernel/task.h>
 
 void mutex_init(mutex_t *m)
 {
@@ -57,6 +55,7 @@ int mutex_trylock(mutex_t *m)
 
 void mutex_lock(mutex_t *m)
 {
+	might_sleep();
 	spinlock_lock(&m->lock);
 
 	if (mutex_trylock_unlocked(m) < 0) {
