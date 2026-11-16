@@ -181,19 +181,17 @@ static pte_t *walk_leaf(pte_t *root, uintptr_t va)
 	return NULL;
 }
 
-int vpage_unmmap(pte_t *root, uintptr_t va)
+void vpage_unmmap(pte_t *root, uintptr_t va)
 {
 	pte_t *leaf = walk_leaf(root, va);
 	if (!leaf) {
-		return -EINVAL;
+		return;
 	}
 
 	void *page = get_next_lvl_pte(*leaf);
 	page_put(page);
 	*leaf = 0;
 	mmu_flush_tlb();
-
-	return 0;
 }
 
 static inline uint32_t get_flags(pte_t pte)

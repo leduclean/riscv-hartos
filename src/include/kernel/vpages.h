@@ -54,12 +54,12 @@ static inline int vpage_map_user(pte_t *root, uintptr_t va, void *pa,
 /**
  * @brief Unmap a memory mapped virtual address of a single page in a page tree.
  *
+ * No-op if @p va isn't mapped (e.g. a lazy mmap page never faulted in).
+ *
  * @param root The root table of the page tree.
  * @param va The virtual address of the page to unmap.
- * @retval 0 Success.
- * @retval -EINVAL @p va isn't mapped.
  */
-int vpage_unmmap(pte_t *root, uintptr_t va);
+void vpage_unmmap(pte_t *root, uintptr_t va);
 
 /**
  * @brief Memory map a virtual address range to a physical address range of a page table.
