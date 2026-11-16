@@ -9,8 +9,6 @@
 
 #include <arch/csr.h>
 
-#include "kernel/scheduler.h"
-
 /**
  * @brief Memory barrier for IO DMA coherency.
  */
@@ -82,31 +80,14 @@ inline static void irq_disable_s(void)
 /** @brief Halt the kernel, reporting @msg and where it was raised. */
 #define panic(msg) _panic((msg), __FILE__, __LINE__)
 
-static inline void _might_sleep(const char *file, int line)
-{
-	/** Check that we are not spining or in a critical section when 
-     * sleeping. */
-	if (!(irq_is_enable_s() && scheduler_preemptible())) {
-		printf("At %p \n", __builtin_return_address(0));
-		_panic("Sleeping function called with irq on.", file, line);
-	}
-}
-/**
- * @brief Guard that check irq are enabled for sleeping funtion. 
- */
-#define might_sleep() _might_sleep(__FILE__, __LINE__)
-
-/** @brief Saved interrupt state, as returned by irq_save(). */
-typedef unsigned long irq_flags_t;
-
 /**
  * @brief Disable the cpu irq and save the previous state.
  *
  * @return Previous sstatus, to give back to irq_restore().
  */
-static inline irq_flags_t irq_save(void)
+static inline unsigned long irq_save(void)
 {
-	irq_flags_t flags = csr_read(sstatus);
+	unsigned long flags = csr_read(sstatus);
 	if (flags & SSTATUS_SIE) {
 		irq_disable_s();
 	}
@@ -118,7 +99,7 @@ static inline irq_flags_t irq_save(void)
  *
  * @param flags State returned by the matching irq_save() call.
  */
-inline static void irq_restore(irq_flags_t flags)
+inline static void irq_restore(unsigned long flags)
 {
 	// Interupt were enabled so we restore them
 	if (flags & SSTATUS_SIE)

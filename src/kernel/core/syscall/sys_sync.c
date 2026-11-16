@@ -14,7 +14,7 @@
 
 int8_t sys_wait(void)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	task_t *parent = task_active();
 	//TODO: Should return an error this task has no child
@@ -41,7 +41,7 @@ static inline int find_pid_cb(clist_node_t *node, void *args)
 
 int8_t sys_waitpid(int8_t pid)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	task_t *parent = task_active();
 	clist_node_t *zombies = &parent->zombies;

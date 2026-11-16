@@ -199,7 +199,7 @@ static void check_and_preempt(task_t *task)
  */
 static void switch_out_active(void)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	refresh_highest_prio();
 	clist_node_t *next_node = clist_first(pick_highest());
@@ -283,7 +283,7 @@ static inline int wake_up_waiting_cb(clist_node_t *current, void *args)
 
 void scheduler_admit(task_t *task)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	ready_queue_enqueue(task);
 	update_highest(task);
@@ -318,7 +318,7 @@ void scheduler_rotate(void)
 		return;
 	}
 
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	task_t *next = rotate_ready_queue(pick_highest());
 	if (next != task_active())
@@ -329,7 +329,7 @@ void scheduler_rotate(void)
 
 void scheduler_ready_task(task_t *task)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	// Wake the task
 	task_wake(task);
@@ -374,7 +374,7 @@ static inline int exit_tgid_cb(clist_node_t *node, void *arg)
 void scheduler_exit_group(int exit_code)
 {
 	task_t *task = task_active();
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 	clist_for_each(task_table_clist(), exit_tgid_cb, &task->tgid);
 	irq_restore(flags);
 
@@ -383,7 +383,7 @@ void scheduler_exit_group(int exit_code)
 
 void scheduler_sleep(uint32_t nbr_secs)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	task_t *task = task_active();
 	ready_queue_remove(task);
@@ -395,7 +395,7 @@ void scheduler_sleep(uint32_t nbr_secs)
 
 void scheduler_wake_sleeping(void)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	uint32_t now = time_seconds();
 	clist_for_each(&sleeping_head, wake_up_sleeping_cb, &now);
@@ -405,7 +405,7 @@ void scheduler_wake_sleeping(void)
 
 void scheduler_block_on(wait_queue_t *wq)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	task_t *task = task_active();
 	move_to_wq(task, wq);
@@ -416,7 +416,7 @@ void scheduler_block_on(wait_queue_t *wq)
 
 void scheduler_block_on_locked(wait_queue_t *wq, spinlock_t *s)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 	task_t *task = task_active();
 
 	move_to_wq(task, wq);
@@ -428,7 +428,7 @@ void scheduler_block_on_locked(wait_queue_t *wq, spinlock_t *s)
 
 void scheduler_block_on_with_timeout(wait_queue_t *wq, uint32_t timeout_secs)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 
 	task_t *task = task_active();
 	move_to_wq(task, wq);
@@ -443,7 +443,7 @@ void scheduler_block_on_with_timeout(wait_queue_t *wq, uint32_t timeout_secs)
 
 void scheduler_wake_waiting_queue(wait_queue_t *wq)
 {
-	irq_flags_t flags = irq_save();
+	unsigned long flags = irq_save();
 	wq_for_each_and_del(wq, wake_up_waiting_cb, NULL);
 	irq_restore(flags);
 }

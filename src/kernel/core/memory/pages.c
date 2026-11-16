@@ -53,7 +53,7 @@ uint8_t page_get_ref_count(const void *page)
 
 void *page_get(void *page)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 	page_rc[page_idx(page)]++;
 	irq_restore(state);
 	return (void *)page;
@@ -73,7 +73,7 @@ void page_init(void)
 
 void *page_alloc(void)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 
 	void *addr = clist_pop_front(&free_pages);
 	if (!addr) {
@@ -90,7 +90,7 @@ err_restore_irq:
 
 void page_put(void *page)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 	if (page_get_ref_count(page) == 0) {
 		panic("page_put() on a page nobody holds: double free");
 	}

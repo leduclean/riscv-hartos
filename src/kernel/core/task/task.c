@@ -220,7 +220,7 @@ void task_block(task_t *task)
 
 void task_wake(task_t *task)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 	if ((task->state == SLEEPING) || (task->state == BLOCKED)) {
 		// Remove it from sleeping and blocked queue if remaining
 		remove_from_blocking_queues(task);
@@ -241,7 +241,7 @@ static void release_fds(task_t *p)
 
 void task_zombify(task_t *task, int exit_code)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 
 	task_t *parent = task->parent;
 	if (parent == NULL) {
@@ -266,7 +266,7 @@ void task_zombify(task_t *task, int exit_code)
 
 void task_destroy(task_t *task)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 	if (task_active() == task) {
 		panic("Trying to destroy the current task led to segfault. Use zombify instead");
 	}
@@ -425,7 +425,7 @@ static int transfer_argv(pte_t *old_ptable, pte_t *new_ptable,
 task_t *task_start_userland(struct file *user_elf, const char *name,
 			    priority prior)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 	task_t *p = alloc_squeletton(name, prior, true, task_active());
 	if (IS_ERR(p)) {
 		goto err_restore_irq;
@@ -465,7 +465,7 @@ err_restore_irq:
 
 task_t *task_kthread(void code(void), const char *name, priority prior)
 {
-	irq_flags_t state = irq_save();
+	unsigned long state = irq_save();
 	task_t *p = alloc_squeletton(name, prior, false, task_active());
 	if (IS_ERR(p)) {
 		goto err_restore_irq;
