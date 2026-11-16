@@ -184,7 +184,40 @@ int64_t seek(int fd, int64_t offset, int whence);
  */
 int pipe(int fildes[2]);
 
+/**
+ * @brief Map a file in the process address space.
+ *
+ * Pages are loaded lazily on the first access. Touching a page fully past
+ * the end of the file is a segfault.
+ *
+ * @param addr Ignored for now, the kernel picks the address.
+ * @param len Size of the mapping, rounded up to a page.
+ * @param prot PROT_X permissions of the mapping.
+ * @param flags Either MAP_SHARED (writes reach the file on munmap() or exit)
+ * or MAP_PRIVATE (copy on write, never written back).
+ * @param fildes File descriptor to map, must be open for reading.
+ * @param off Ignored for now, the mapping starts at offset 0.
+ * @return The address of the mapping, test it with IS_ERR().
+ * @retval -EINVAL @p len is 0 or not exactly one of MAP_SHARED/MAP_PRIVATE.
+ * @retval -EBADF @p fildes is not open.
+ * @retval -EACCES @p fildes not readable, or MAP_SHARED with PROT_WRITE on
+ * a fd not open for writing.
+ * @retval -EMFILE No room left in the mmap area.
+ * @retval -ENOMEM Out of kernel memory.
+ */
 void *mmap(void *addr, size_t len, int prot, int flags, int fildes,
 	   int64_t off);
 
+/**
+ * @brief Unmap the mappings lying fully inside [addr, addr + len).
+ *
+ * MAP_SHARED mappings are written back to their file first.
+ *
+ * @param addr Start of the range, rounded down to a page.
+ * @param len Size of the range, rounded up to a page.
+ * @return 0 on success else error code < 0.
+ * @retval 0 Success, even if no mapping was in the range.
+ * @retval -EINVAL @p len is 0 or @p addr is outside the mmap area.
+ * @retval -EIO Disk failure during the write back.
+ */
 int munmap(void *addr, size_t len);
