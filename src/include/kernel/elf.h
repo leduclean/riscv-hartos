@@ -43,9 +43,8 @@ int elf_verify_file_format(const struct elf_hdr *hdr);
  *
  * @param root The root of the page table tree.
  * @param f The elf file memory location.
- * @retval 0 Success.
+ * @retval brk on success.
  * @retval -ENOEXEC Bad program header.
  * @retval -ENOMEM Out of memory.
  */
-
-int elf_map(pte_t *root, struct file *f, const struct elf_hdr *hdr);
+intptr_t elf_map(pte_t *root, struct file *f, const struct elf_hdr *hdr);

@@ -326,11 +326,12 @@ static int load_elf_image(task_t *p, struct file *elf, uintptr_t *entry)
 		return res;
 	}
 
-	res = elf_map(p->root_ptable, elf, &hdr);
-	if (res < 0) {
+	intptr_t brk = elf_map(p->root_ptable, elf, &hdr);
+	if (brk < 0) {
 		vpage_tree_free(p->root_ptable);
-		return res;
+		return brk;
 	}
+	p->brk = ALIGN_UP(brk, PAGE_SIZE);
 
 	*entry = hdr.entry;
 

@@ -218,10 +218,12 @@ static int map_phdr(pte_t *root, struct file *f, const struct elf_phdr *phdr)
 		}
 	}
 
-	return 0;
+	return phdr->va + phdr->memsz;
 }
 
-int elf_map(pte_t *root, struct file *f, const struct elf_hdr *hdr)
+#define MAX(a, b) (a) < (b) ? (b) : (a)
+
+intptr_t elf_map(pte_t *root, struct file *f, const struct elf_hdr *hdr)
 {
 
 	struct elf_phdr phdr_tab[ELF_MAX_PHDR];
@@ -230,6 +232,7 @@ int elf_map(pte_t *root, struct file *f, const struct elf_hdr *hdr)
 		return nb_phdr;
 	}
 
+	intptr_t brk = 0;
 	for (int i = 0; i < nb_phdr; i++) {
 		if (!is_load_phdr(&phdr_tab[i])) {
 			continue;
@@ -243,7 +246,9 @@ int elf_map(pte_t *root, struct file *f, const struct elf_hdr *hdr)
 		if (res < 0) {
 			return res;
 		}
+
+		brk = MAX(brk, res);
 	}
 
-	return 0;
+	return brk;
 }
