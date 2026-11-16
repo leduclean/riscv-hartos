@@ -602,6 +602,7 @@ int task_exec(task_t *p, struct file *elf, char *const argv[])
 	uintptr_t sp;
 	res = transfer_argv(old_mm->root, p->mm->root, argv, &sp);
 	if (res < 0) {
+		mm_put(p->mm);
 		goto err_restore_old_state;
 	}
 
