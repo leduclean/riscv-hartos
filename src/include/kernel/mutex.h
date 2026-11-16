@@ -6,8 +6,8 @@
 #pragma once
 #include <stdint.h>
 
-#include <kernel/task.h>
 #include <kernel/spinlock.h>
+#include <kernel/waitqueue.h>
 
 /** @brief Mutex, with its owner and the tasks waiting for it. */
 typedef struct mutex {
@@ -17,7 +17,7 @@ typedef struct mutex {
 	spinlock_t lock; ///< Mutex internal structure lock.
 } mutex_t;
 
-#define MUTEX_INITIALIZER(name)                   \
+#define MUTEX_INITIALIZER(name)                    \
 	{ .locked = 0,                             \
 	  .owner = NULL,                           \
 	  .wq = WAIT_QUEUE_INITIALIZER((name).wq), \

@@ -7,11 +7,10 @@
 
 #include <arch/cpu.h>
 #include <arch/trap.h>
-
 #include <kernel/mmap.h>
-#include <kernel/task.h>
 #include <kernel/scheduler.h>
 #include <kernel/spinlock.h>
+#include <kernel/task.h>
 #include <kernel/time.h>
 #include <kernel/vpages.h>
 #include <kernel/waitqueue.h>
@@ -347,7 +346,7 @@ void scheduler_exit(int exit_code)
 	(void)irq_save();
 
 	task_t *current = task_active();
-
+	task_exit_mm(current);
 	task_zombify(current, exit_code);
 	switch_out_active();
 	panic("Zombie exit");

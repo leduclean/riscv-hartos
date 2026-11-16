@@ -21,7 +21,7 @@ int sys_open(const char *path, unsigned long flags)
 	char kernel_path[FS_MAX_PATH];
 
 	task_t *active = task_active();
-	int res = vpage_copyinstr(active->root_ptable, kernel_path, path,
+	int res = vpage_copyinstr(active->mm->root, kernel_path, path,
 				  FS_MAX_PATH);
 	if (res < 0) {
 		return res;
@@ -107,6 +107,6 @@ int sys_pipe(int fildes[2])
 		return res;
 	}
 
-	return vpage_copyout(active->root_ptable, fildes, kfildes,
+	return vpage_copyout(active->mm->root, fildes, kfildes,
 			     sizeof(kfildes));
 }

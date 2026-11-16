@@ -131,7 +131,7 @@ static ssize_t console_write([[maybe_unused]] struct file *f, bool user,
 		if (count > SYS_BUFFER_SIZE) {
 			return -EINVAL;
 		}
-		int res = vpage_copyin(task_active()->root_ptable, kbuf, src,
+		int res = vpage_copyin(task_active()->mm->root, kbuf, src,
 				       count);
 		if (res < 0) {
 			return res;
@@ -158,7 +158,7 @@ static ssize_t console_read([[maybe_unused]] struct file *f, bool user,
 	}
 
 	if (user) {
-		int res = vpage_copyout(task_active()->root_ptable, dst, buf,
+		int res = vpage_copyout(task_active()->mm->root, dst, buf,
 					count);
 		if (res < 0) {
 			return res;

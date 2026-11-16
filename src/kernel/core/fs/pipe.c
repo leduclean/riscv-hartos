@@ -10,6 +10,9 @@
 #include <kernel/syscall.h>
 #include <kernel/waitqueue.h>
 
+#include "kernel/task.h"
+#include "kernel/vpages.h"
+
 #define PIPE_SIZE PAGE_SIZE
 
 struct pipe *pipe_alloc(void)
@@ -145,7 +148,7 @@ ssize_t pipe_write(struct file *f, bool user, const char *src, size_t count)
 		if (count > SYS_BUFFER_SIZE) {
 			return -EINVAL;
 		}
-		int res = vpage_copyin(task_active()->root_ptable, kbuf, src,
+		int res = vpage_copyin(task_active()->mm->root, kbuf, src,
 				       count);
 		if (res < 0) {
 			return res;
@@ -184,7 +187,7 @@ ssize_t pipe_read(struct file *f, bool user, char *dst, size_t count)
 	}
 
 	if (user) {
-		int res = vpage_copyout(task_active()->root_ptable, dst, buf,
+		int res = vpage_copyout(task_active()->mm->root, dst, buf,
 					count);
 		if (res < 0) {
 			return res;

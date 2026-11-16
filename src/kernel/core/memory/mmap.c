@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <stdint.h>
 
 #include <lib/bit.h>
@@ -10,6 +11,7 @@
 
 #include <arch/asm_defs.h>
 #include <arch/board.h>
+#include <arch/cpu.h>
 #include <arch/csr.h>
 #include <arch/mmu.h>
 #include <arch/trap.h>
@@ -20,6 +22,7 @@
 #include <kernel/ldsym.h>
 #include <kernel/mem_layout.h>
 #include <kernel/mmap.h>
+#include <kernel/mutex.h>
 #include <kernel/pages.h>
 #include <kernel/task.h>
 #include <kernel/vpages.h>
@@ -58,18 +61,57 @@ static void free_vmap(struct vmap *m)
 	ta_free(m);
 }
 
-void mmap_release_all(task_t *p)
+static void release_mmaps(struct mm *mm)
 {
-	clist_node_t *head = &p->va_node;
+	clist_node_t *head = &mm->vmaps;
 	clist_node_t *cur = head->next;
 	while (cur != head) {
 		clist_node_t *next = cur->next;
 		struct vmap *m = vmap_from_node(cur);
-		//TODO: if MAP_PRIVATE -> write back to the file.
-		// No need to unmap since the mapping won't be used again afer
+		//TODO: if MAP_SHARED -> write back to the file.
+		// No need to unmap: vpage_tree_free() drops the whole tree.
 		free_vmap(m);
 		cur = next;
 	}
+}
+
+struct mm *mm_alloc(void)
+{
+	struct mm *mm = ta_alloc(sizeof(*mm));
+	if (!mm) {
+		return NULL;
+	}
+
+	mm->root = page_alloc();
+	if (!mm->root) {
+		ta_free(mm);
+		return NULL;
+	}
+
+	clist_init_node(&mm->vmaps);
+	mm->brk = 0;
+	atomic_init(&mm->users, 1);
+
+	return mm;
+}
+
+struct mm *mm_get(struct mm *mm)
+{
+	// Atomic
+	mm->users++;
+	return mm;
+}
+
+void mm_put(struct mm *mm)
+{
+	// Atomic
+	if (--mm->users > 0) {
+		return;
+	}
+
+	release_mmaps(mm);
+	vpage_tree_free(mm->root);
+	ta_free(mm);
 }
 
 int mmap_unmap(task_t *p, uintptr_t va, size_t len)
@@ -81,21 +123,24 @@ int mmap_unmap(task_t *p, uintptr_t va, size_t len)
 		return -EINVAL;
 	}
 
-	clist_node_t *head = &p->va_node;
+	clist_node_t *head = &p->mm->vmaps;
 	clist_node_t *cur = head->next;
 
 	uintptr_t unmap_start = ALIGN_DOWN(va, PAGE_SIZE);
-
 	uintptr_t unmap_end = ALIGN_UP(va + len, PAGE_SIZE);
+
 	while (cur != head) {
 		clist_node_t *next = cur->next;
 		struct vmap *m = vmap_from_node(cur);
-		if ((unmap_start <= m->vm_start) && (m->vm_end <= unmap_end)) {
-			//TODO: if MAP_PRIVATE -> write back to the file.
+
+		bool should_unmap = unmap_start <= m->vm_start &&
+				    m->vm_end <= unmap_end;
+		if (should_unmap) {
+			//TODO: if MAP_SHARED -> write back to the file.
 			clist_remove(cur);
 			for (uintptr_t addr = m->vm_start; addr < m->vm_end;
 			     addr += PAGE_SIZE) {
-				vpage_unmmap(p->root_ptable, addr);
+				vpage_unmmap(p->mm->root, addr);
 			}
 			free_vmap(m);
 		}
@@ -116,7 +161,7 @@ static int va_is_in_range(clist_node_t *node, void *args)
 
 static struct vmap *find_vmap(task_t *p, uintptr_t va)
 {
-	clist_node_t *node = clist_find(&p->va_node, va_is_in_range, &va);
+	clist_node_t *node = clist_find(&p->mm->vmaps, va_is_in_range, &va);
 	if (!node) {
 		return NULL;
 	}
@@ -182,8 +227,8 @@ int mmap_resolve_va(task_t *p, uintptr_t va)
 	}
 	inode_unlock(i);
 
-	res = vpage_map_user(p->root_ptable, ALIGN_DOWN(va, PAGE_SIZE),
-			     buf, prot_to_pte_flags(m));
+	res = vpage_map_user(p->mm->root, ALIGN_DOWN(va, PAGE_SIZE), buf,
+			     prot_to_pte_flags(m));
 	if (res < 0) {
 		goto err_put_page;
 	}
@@ -225,7 +270,7 @@ intptr_t mmap_file(task_t *p, [[maybe_unused]] uintptr_t va, struct file *f,
 		return -ENOTSUP;
 	}
 
-	clist_node_t *head = &p->va_node;
+	clist_node_t *head = &p->mm->vmaps;
 	clist_node_t *insert_after = head;
 	uintptr_t gap_end = MMAP_BASE;
 
@@ -243,7 +288,7 @@ intptr_t mmap_file(task_t *p, [[maybe_unused]] uintptr_t va, struct file *f,
 	size_t aligned_len = ALIGN_UP(len, PAGE_SIZE);
 	uintptr_t vm_start = vm_end - aligned_len;
 
-	if (vm_start < p->brk) {
+	if (vm_start < p->mm->brk) {
 		return -EMFILE;
 	}
 	struct vmap *m = ta_alloc(sizeof(*m));
@@ -264,7 +309,8 @@ int iommap_kernel(void *addr, size_t size)
 {
 	int res;
 
-	res = vpage_map_range(kroot, (uintptr_t)addr, addr, size, PTE_R | PTE_W);
+	res = vpage_map_range(kroot, (uintptr_t)addr, addr, size,
+			      PTE_R | PTE_W);
 	if (res < 0) {
 		return res;
 	}
@@ -294,8 +340,7 @@ int mmap_kernel(void)
 		goto err_free_root;
 	}
 
-	res = vpage_map(kroot, UART_BASE, (void *)UART_BASE,
-			PTE_R | PTE_W);
+	res = vpage_map(kroot, UART_BASE, (void *)UART_BASE, PTE_R | PTE_W);
 	if (res < 0) {
 		goto err_free_root;
 	}
@@ -307,9 +352,8 @@ int mmap_kernel(void)
 		goto err_free_root;
 	}
 
-	res = vpage_map_range(kroot, PLIC_MMIO_BASE,
-			      (void *)PLIC_MMIO_BASE, PLIC_MMIO_SIZE,
-			      PTE_R | PTE_W);
+	res = vpage_map_range(kroot, PLIC_MMIO_BASE, (void *)PLIC_MMIO_BASE,
+			      PLIC_MMIO_SIZE, PTE_R | PTE_W);
 	if (res < 0) {
 		goto err_free_root;
 	}
@@ -331,11 +375,12 @@ int mmap_uspace(task_t *p)
 		goto out;
 	}
 
-	pte_t *root = page_alloc();
-	if (!root) {
+	struct mm *mm = mm_alloc();
+	if (!mm) {
 		res = -ENOMEM;
 		goto out;
 	}
+	pte_t *root = mm->root;
 
 	tframe_t *t = page_alloc();
 	if (!t) {
@@ -349,7 +394,7 @@ int mmap_uspace(task_t *p)
 		goto err_free_tframe;
 	}
 
-	p->root_ptable = root;
+	p->mm = mm;
 	p->tframe_pa = t;
 	p->tframe_va = TRAPFRAME;
 
@@ -358,7 +403,7 @@ int mmap_uspace(task_t *p)
 err_free_tframe:
 	page_put(t);
 err_free_tree:
-	vpage_tree_free(root);
+	mm_put(mm);
 out:
 	return res;
 }
@@ -372,7 +417,7 @@ int mmap_uimage(task_t *p)
 		return res;
 	}
 
-	pte_t *root = p->root_ptable;
+	pte_t *root = p->mm->root;
 
 	// This is not U page because we will go back to user page
 	// in S mode before the sret returns to user mode.
@@ -400,8 +445,8 @@ int mmap_uimage(task_t *p)
 	return 0;
 
 err_free_tree:
-	vpage_tree_free(root);
-	p->root_ptable = NULL;
+	mm_put(p->mm);
+	p->mm = NULL;
 	p->tframe_pa = NULL;
 	return res;
 }

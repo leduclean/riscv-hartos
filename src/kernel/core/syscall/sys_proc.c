@@ -44,7 +44,7 @@ int sys_exec(const char *path, char *const argv[])
 	task_t *p = task_active();
 
 	char kpath[MAXNAME];
-	res = vpage_copyinstr(p->root_ptable, kpath, path, MAXNAME);
+	res = vpage_copyinstr(p->mm->root, kpath, path, MAXNAME);
 	if (res < 0) {
 		return res;
 	}

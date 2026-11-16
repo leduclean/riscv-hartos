@@ -90,17 +90,33 @@ int mmap_unmap(task_t *p, uintptr_t va, size_t len);
 int mmap_resolve_va(task_t *p, uintptr_t va);
 
 /**
- * @brief Release all the mapping structure of a task.
+ * @brief Allocate an empty address space (root page table, no mapping).
  *
- * @param p Task pcb.
+ * @return The new mm with one user, NULL if out of memory.
  */
-void mmap_release_all(task_t *p);
+struct mm *mm_alloc(void);
+
+/**
+ * @brief Take a reference on an address space (CLONE_VM).
+ *
+ * @return @p mm.
+ */
+struct mm *mm_get(struct mm *mm);
+
+/**
+ * @brief Drop a reference on an address space.
+ *
+ * The last user writes back the MAP_SHARED mappings, releases every vmap and
+ * frees the whole page tree. A failed write back is only reported: nobody is
+ * left to receive the error.
+ */
+void mm_put(struct mm *mm);
 
 /**
  * @brief Allocate and map what each user task owns (root pd and a trapframe).
  *
  * @note fork stops here. The tree owns the trapframe too:
- * vpage_tree_free(p->root_ptable) frees everything.
+ * mm_put(p->mm) frees everything.
  *
  * @param p A pointer to the owner task.
  * @retval 0 Success.

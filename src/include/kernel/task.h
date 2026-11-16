@@ -4,6 +4,7 @@
  */
 
 #pragma once
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -13,6 +14,7 @@
 #include <arch/abi.h>
 #include <arch/trap.h>
 #include <kernel/fs.h>
+#include <kernel/mutex.h>
 #include <kernel/vpages.h>
 #include <kernel/waitqueue.h>
 
@@ -35,6 +37,20 @@ typedef struct ctx {
 	uint64_t s[12]; ///> Callee saved registry.
 } ctx_t;
 
+/** @brief Address space, shared by every thread created with CLONE_VM. */
+struct mm {
+	atomic_int users; ///< Number of tasks using this address space.
+
+	/** Protects the following field*/
+	//TODO: on SMP we should acquire a mutex to modify this struture
+	// shared between thread.
+	// mutex_t lock;
+
+	pte_t *root; ///< Root page table.
+	clist_node_t vmaps; ///< List head of the mmap regions.
+	uintptr_t brk; ///< End of the program.
+};
+
 /* ctxt.S hardcodes these offsets, keep both in sync. */
 static_assert(offsetof(ctx_t, s) == 2 * 8, "ctxt.S offsets stale");
 
@@ -50,9 +66,7 @@ typedef struct task {
 	state state; ///< Current lifecycle state.
 	ctx_t ctx; ///< Registers saved on a context switch.
 	uint64_t kstack[KSTACK_SIZE]; ///< Task stack.
-	pte_t *root_ptable; ///< Task Root Page table.
-	clist_node_t va_node; ///< List head of va mapping of the task.
-	uintptr_t brk; ///< End of the program.
+	struct mm *mm; ///< Address space, NULL for kernel tasks.
 	bool user; ///< User mode Task flag (fixed at creation).
 	tframe_t *
 		tframe_pa; //< The User trap frame used to save the user context.
@@ -153,6 +167,8 @@ void task_zombify(task_t *task, int exit_code);
  * @param task Task to clean up.
  */
 void task_destroy(task_t *task);
+
+void task_exit_mm(task_t *task);
 
 /**
  * @brief Reap a zombie task, called by its parent.

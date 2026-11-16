@@ -104,7 +104,6 @@ static inline void init_task_queues(task_t *task)
 	clist_init_node(&task->wait_node);
 	clist_init_node(&task->sleep_node);
 	clist_init_node(&task->zombies);
-	clist_init_node(&task->va_node);
 	wq_init(&task->zombie_wq);
 }
 
@@ -275,21 +274,24 @@ void task_destroy(task_t *task)
 	task->state = TERMINATED;
 	remove_from_all_queues(task);
 
-	pte_t *root = task->root_ptable;
-	if (root) {
-		vpage_unmmap(task->root_ptable, task->tframe_va);
-		mmap_release_all(task);
-		if (page_get_ref_count(root) == 1) {
-			vpage_tree_free(task->root_ptable);
-		} else {
-			page_put(root);
-		}
+	if (task->mm) {
+		vpage_unmmap(task->mm->root, task->tframe_va);
 	}
 
 	free(task);
 	task_table.active_task--;
 
 	irq_restore(state);
+}
+
+void task_exit_mm(task_t *task)
+{
+	if (!task->mm) {
+		return;
+	}
+	vpage_unmmap(task->mm->root, task->tframe_va);
+	mm_put(task->mm);
+	task->mm = NULL;
 }
 
 static void copy_fds(task_t *child, const task_t *parent, bool clone)
@@ -329,12 +331,13 @@ static int load_elf_image(task_t *p, struct file *elf, uintptr_t *entry)
 		return res;
 	}
 
-	intptr_t brk = elf_map(p->root_ptable, elf, &hdr);
+	intptr_t brk = elf_map(p->mm->root, elf, &hdr);
 	if (brk < 0) {
-		vpage_tree_free(p->root_ptable);
+		mm_put(p->mm);
+		p->mm = NULL;
 		return brk;
 	}
-	p->brk = ALIGN_UP(brk, PAGE_SIZE);
+	p->mm->brk = ALIGN_UP(brk, PAGE_SIZE);
 
 	*entry = hdr.entry;
 
@@ -402,7 +405,8 @@ static int transfer_argv(pte_t *old_ptable, pte_t *new_ptable,
 	sp = ALIGN_DOWN(sp - argv_size, STACK_ALIGN);
 
 	/* Copy back argc */
-	int res = vpage_copyout(new_ptable, (void __user *)sp, argv_tmp, argv_size);
+	int res = vpage_copyout(new_ptable, (void __user *)sp, argv_tmp,
+				argv_size);
 	if (res < 0) {
 		return res;
 	}
@@ -437,12 +441,12 @@ task_t *task_start_userland(struct file *user_elf, const char *name,
 	}
 
 	uintptr_t sp;
-	res = transfer_argv(NULL, p->root_ptable, NULL, &sp);
+	res = transfer_argv(NULL, p->mm->root, NULL, &sp);
 	if (res < 0) {
 		goto err_free_task;
 	}
 
-	tframe_init(p->tframe_pa, p->root_ptable,
+	tframe_init(p->tframe_pa, p->mm->root,
 		    (unsigned long)&p->kstack[KSTACK_SIZE]);
 	tframe_start(p->tframe_pa, (void *)entry, (void *)sp);
 
@@ -488,8 +492,6 @@ err_restore_irq:
 task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 		   unsigned long flags)
 {
-	//TODO: maybe we should copy the MMAP section on fork ?
-
 	if (!parent->user) {
 		panic("Only fork for user task is supported ");
 	}
@@ -509,8 +511,7 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 	child->tframe_pa = t;
 
 	if (flags & CLONE_VM) {
-		// Add a reference to this page.
-		child->root_ptable = page_get((void *)parent->root_ptable);
+		child->mm = mm_get(parent->mm);
 		child->tgid = parent->tgid;
 
 		if (!stack || !entry) {
@@ -521,15 +522,16 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 		tframe_set_arg(t, 0, (unsigned long)args);
 		child->tframe_va = THREAD_TRAPFRAME(child->pid);
 	} else {
-		pte_t *root = page_alloc();
-		if (!root) {
+		struct mm *mm = mm_alloc();
+		if (!mm) {
 			goto err_free_tframe;
 		}
-		child->root_ptable = root;
+		mm->brk = parent->mm->brk;
+		child->mm = mm;
 		child->tgid = child->pid;
 
 		// CoW all the tree.
-		res = vpage_tree_copy(root, parent->root_ptable);
+		res = vpage_tree_copy(mm->root, parent->mm->root);
 		if (res < 0) {
 			goto err_free_map;
 		}
@@ -542,14 +544,13 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 	}
 
 	// Map the trap frame into the table
-	res = vpage_map(child->root_ptable, child->tframe_va, t,
-			PTE_R | PTE_W);
+	res = vpage_map(child->mm->root, child->tframe_va, t, PTE_R | PTE_W);
 	if (res < 0) {
 		// t failed to get mapped so no in the tree yet
 		goto err_free_map;
 	}
 
-	tframe_init(t, child->root_ptable,
+	tframe_init(t, child->mm->root,
 		    (unsigned long)&child->kstack[KSTACK_SIZE]);
 
 	// On ctx switch on fork, we want this state
@@ -563,11 +564,7 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 	return child;
 
 err_free_map:
-	if (flags & CLONE_VM) {
-		page_put(child->root_ptable);
-	} else {
-		vpage_tree_free(child->root_ptable);
-	}
+	mm_put(child->mm);
 err_free_tframe:
 	page_put(child->tframe_pa);
 err_free_task:
@@ -593,7 +590,7 @@ int task_exec(task_t *p, struct file *elf, char *const argv[])
 
 	// Save the state
 	irq_flags_t state = irq_save();
-	pte_t *old_ptable = p->root_ptable;
+	struct mm *old_mm = p->mm;
 	tframe_t *old_tframe = p->tframe_pa;
 
 	uintptr_t entry;
@@ -603,23 +600,23 @@ int task_exec(task_t *p, struct file *elf, char *const argv[])
 	}
 
 	uintptr_t sp;
-	res = transfer_argv(old_ptable, p->root_ptable, argv, &sp);
+	res = transfer_argv(old_mm->root, p->mm->root, argv, &sp);
 	if (res < 0) {
 		goto err_restore_old_state;
 	}
 
-	tframe_init(p->tframe_pa, p->root_ptable,
+	tframe_init(p->tframe_pa, p->mm->root,
 		    (unsigned long)&p->kstack[KSTACK_SIZE]);
 	tframe_start(p->tframe_pa, (void *)entry, (void *)sp);
 
 	// Once all has worked free all the old ressources.
-	vpage_tree_free(old_ptable);
+	mm_put(old_mm);
 	irq_restore(state);
 
 	return 0;
 
 err_restore_old_state:
-	p->root_ptable = old_ptable;
+	p->mm = old_mm;
 	p->tframe_pa = old_tframe;
 	irq_restore(state);
 	return res;

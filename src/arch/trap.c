@@ -155,8 +155,7 @@ void usertrap(void)
 		case STORE_PAGE_FAULT: {
 			// printf("[Kernel/INFO]: CoW fault on 0x%lx (pid %d)\n",
 			//        stval, p->pid);
-			if (vpage_handle_cow(p->root_ptable, stval) ==
-			    0) {
+			if (vpage_handle_cow(p->mm->root, stval) == 0) {
 				break;
 			}
 		}
