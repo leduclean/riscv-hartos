@@ -28,6 +28,8 @@
 	X(fs_seek_test, "Test the seek syscall on a fd", "fs_seek_test")      \
 	X(fs_pipe_test, "Test a pipe between 2 process", "fs_pipe_test")      \
 	X(mmap_test, "Test the mmap behavior", "mmap_test")                   \
+	X(mmap_shr_test, "MAP_SHARED write back on munmap", "mmap_shr_test")  \
+	X(mmap_exit_test, "MAP_SHARED write back on exit", "mmap_exit_test")  \
 	X(thread_test, "Test the thread api", "thread_test")
 
 typedef void (*cmd_func_t)(int argc, char *const argv[]);

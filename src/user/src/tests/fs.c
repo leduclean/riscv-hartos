@@ -226,3 +226,104 @@ void cmd_mmap_test([[maybe_unused]] int argc,
 
 	TEST_SUCCESS();
 }
+
+/*
+ * The kernel never syncs the block cache to the disk yet: the MAP_SHARED
+ * tests read the file back within the same boot, through the inode.
+ */
+
+/** @brief Read @p n bytes of FS_TEST_FILE at @p off into @p buf. */
+static void read_test_file_at(int64_t off, char *buf, size_t n)
+{
+	int fd = open(FS_TEST_FILE, O_R);
+	if (fd < 0) {
+		TEST_ERROR("open failed: %d", fd);
+	}
+	TEST_ASSERT_EQ(off, seek(fd, off, SEEK_SET));
+	TEST_ASSERT_EQ(n, read(fd, buf, n));
+	close(fd);
+}
+
+/** @brief Fill the first @p npages of FS_TEST_FILE with '0', '1', ... */
+static void fill_test_file(int npages)
+{
+	int fd = open(FS_TEST_FILE, O_CREAT | O_W | O_R);
+	if (fd < 0) {
+		TEST_ERROR("open failed: %d", fd);
+	}
+
+	static char page[4096];
+	for (int i = 0; i < npages; i++) {
+		memset(page, '0' + i, sizeof(page));
+		TEST_ASSERT_EQ(sizeof(page), write(fd, page, sizeof(page)));
+	}
+	close(fd);
+}
+
+/** @brief Map the first @p len bytes of FS_TEST_FILE, shared and writable. */
+static char *map_test_file_shared(size_t len)
+{
+	int fd = open(FS_TEST_FILE, O_W | O_R);
+	if (fd < 0) {
+		TEST_ERROR("open failed: %d", fd);
+	}
+
+	void *va = mmap(0, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (IS_ERR(va)) {
+		TEST_ERROR("mmap failed with %ld", PTR_ERR(va));
+	}
+	// The mapping holds its own reference on the file.
+	close(fd);
+	return va;
+}
+
+void cmd_mmap_shr_test([[maybe_unused]] int argc,
+		       [[maybe_unused]] char *const argv[])
+{
+	fill_test_file(2);
+	char *ptr = map_test_file_shared(2 * 4096);
+
+	// Page 0 is written straight away, page 1 is read before.
+	ptr[0] = 'A';
+	TEST_ASSERT_EQ('1', ptr[4096]);
+	ptr[4096 + 1] = 'B';
+
+	TEST_ASSERT_EQ(0, munmap(ptr, 2 * 4096));
+
+	char buf[2];
+	read_test_file_at(0, buf, sizeof(buf));
+	TEST_ASSERT_EQ('A', buf[0]);
+	TEST_ASSERT_EQ('0', buf[1]);
+
+	read_test_file_at(4096, buf, sizeof(buf));
+	TEST_ASSERT_EQ('1', buf[0]);
+	TEST_ASSERT_EQ('B', buf[1]);
+
+	TEST_SUCCESS();
+}
+
+void cmd_mmap_exit_test([[maybe_unused]] int argc,
+			[[maybe_unused]] char *const argv[])
+{
+	fill_test_file(1);
+
+	int8_t pid = fork();
+	if (pid < 0) {
+		TEST_ERROR("fork failed: %d", pid);
+	}
+
+	if (pid == 0) {
+		// No munmap: the write back must happen when the mm dies.
+		char *ptr = map_test_file_shared(4096);
+		ptr[0] = 'C';
+		exit(0);
+	}
+
+	waitpid(pid);
+
+	char c;
+	read_test_file_at(0, &c, 1);
+	TEST_ASSERT_EQ('C', c);
+
+	TEST_SUCCESS();
+}
