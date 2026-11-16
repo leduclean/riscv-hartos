@@ -497,11 +497,10 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 	}
 
 	int res = -ENOMEM;
-	irq_flags_t state = irq_save();
 	task_t *child = alloc_squeletton(parent->name, parent->priority,
 					 parent->user, parent);
 	if (IS_ERR(child)) {
-		goto err_restore_irq;
+		return child;
 	}
 
 	tframe_t *t = page_alloc();
@@ -560,7 +559,6 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 	copy_fds(child, parent, flags & CLONE_FILES);
 
 	activate_task(child);
-	irq_restore(state);
 	return child;
 
 err_free_map:
@@ -570,8 +568,6 @@ err_free_tframe:
 err_free_task:
 	free(child);
 	child = ERR_PTR(res);
-err_restore_irq:
-	irq_restore(state);
 	return child;
 }
 
@@ -588,8 +584,6 @@ int task_exec(task_t *p, struct file *elf, char *const argv[])
 		panic("Task exec on non user is not supported");
 	}
 
-	// Save the state
-	irq_flags_t state = irq_save();
 	struct mm *old_mm = p->mm;
 	tframe_t *old_tframe = p->tframe_pa;
 
@@ -612,14 +606,12 @@ int task_exec(task_t *p, struct file *elf, char *const argv[])
 
 	// Once all has worked free all the old ressources.
 	mm_put(old_mm);
-	irq_restore(state);
 
 	return 0;
 
 err_restore_old_state:
 	p->mm = old_mm;
 	p->tframe_pa = old_tframe;
-	irq_restore(state);
 	return res;
 }
 

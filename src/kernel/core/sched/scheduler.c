@@ -342,9 +342,6 @@ void scheduler_ready_task(task_t *task)
 
 void scheduler_exit(int exit_code)
 {
-	//TODO: check if it properly restores irqs after.
-	(void)irq_save();
-
 	task_t *current = task_active();
 	task_exit_mm(current);
 	task_zombify(current, exit_code);
@@ -371,11 +368,11 @@ static inline int exit_tgid_cb(clist_node_t *node, void *arg)
 
 void scheduler_exit_group(int exit_code)
 {
-	//TODO: check if it properly restores irqs after.
-	(void)irq_save();
-
 	task_t *task = task_active();
+	irq_flags_t flags = irq_save();
 	clist_for_each(task_table_clist(), exit_tgid_cb, &task->tgid);
+	irq_restore(flags);
+
 	scheduler_exit(exit_code);
 }
 
