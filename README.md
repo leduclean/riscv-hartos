@@ -1,130 +1,76 @@
-# RISC-V OS Kernel
+# HartOS
 
-A bare-metal operating system kernel targeting **RISC-V 64-bit** (QEMU `virt` machine), written in C and RISC-V assembly.
+**A small RISC-V kernel that does things the way Linux does them.**
 
-> **Academic project** — developed at [Ensimag](https://ensimag.grenoble-inp.fr/) (Grenoble INP) under the supervision of **Sébastien Viardot**.
-
----
-
-## Demo
-
-![Demo](demo.gif)
+Copy-on-write `fork`, threads sharing an address space, file-backed `mmap`,
+a priority scheduler and virtio block I/O, in plain, readable C. Boots on QEMU `virt`, no libc, no host OS: everything from the trap
+vector to the shell is in this repo.
 
 ---
 
-## Features
+## Why not just xv6?
 
-### Hardware & Boot
+[xv6](https://github.com/mit-pdos/xv6-riscv) is the reference for learning
+Unix v6. HartOS picks up where it stops, with the mechanisms a modern
+kernel actually relies on.
 
-- Bare-metal RISC-V 64-bit target (no host OS, no standard library)
-- UART console driver
-- Graphical framebuffer via bochs-display
-- PLIC-based external interrupt routing
-- Timer interrupt support
-
-### Process Management
-
-- Process lifecycle: `READY → RUNNING → SLEEPING / BLOCKED → TERMINATED → ZOMBIE`
-- Priority levels: `HIGH`, `NORMAL`, `LOW`, `IDLE`
-- Priority-based round-robin scheduler with per-priority ready queues
-- Foreground and background process spawning
-- Sleep and wake-up with timer-based deadlines
-- Zombie reaping and parent/child process relationships
-
-### Synchronization
-
-- Mutexes
-- Semaphores
-- Wait queues with optional timeout
-- IRQ-protected critical sections
-
-### Memory
-
-- Custom dynamic allocator: first-fit free list with eager splitting and immediate coalescing (`tinyalloc`)
-- Statically allocated kernel heap
-
-### Shell
-
-- Interactive shell process with command registry
-- Command parser
-- Built-in programs (`ps`, ...)
-
-### Libraries
-
-- Minimal libc subset (no host dependency): `printf`, `sprintf`, `string`, `ctype`, `strtoul`
-- Circular doubly-linked list (`clist`) with `container_of` intrusive node design
-- Font rendering
+| | xv6-riscv | HartOS |
+| --- | --- | --- |
+| `fork` | full copy | **copy-on-write**, refcounted pages |
+| Threads | no | **`clone(CLONE_VM)`**, thread groups, `exit_group` |
+| `mmap` / `munmap` | no | **file-backed, `MAP_SHARED` write-back** |
+| Scheduler | round-robin | **priority classes**, preemption control |
+| Sync | spinlock, sleeplock | spinlock, **mutex, semaphore, wait queues with timeout** |
+| Debug checks | no | **`might_sleep()`** in atomic context |
+| Console | UART | UART + **framebuffer** |
+| Block I/O | virtio | virtio |
+| SMP | yes | in progress |
 
 ---
 
-## Project Structure
+## Read the book, then the code
 
-```
-src/
-├── arch/              # RISC-V specific: boot, trap handler, UART, IRQ, linker scripts
-├── kernel/
-│   ├── core/          # Scheduler, process, shell, sync primitives, time
-│   └── init/          # Kernel entry point
-├── lib/               # Minimal standard library, clist, allocator
-└── include/           # Public headers
-tests/                 # Unit tests (Unity framework)
-```
+The kernel follows
+[*Operating Systems: Three Easy Pieces*](https://pages.cs.wisc.edu/~remzi/OSTEP/).
+Each concept maps to one place in the source:
 
----
-
-## Requirements
-
-- `riscv64-elf-gcc` toolchain
-- `qemu-system-riscv64`
-- `cmake >= 3.15`
+| OSTEP | Concept | Code |
+| --- | --- | --- |
+| Virtualization | Processes, `fork` / `exec` / `clone` | [`task.c`](src/kernel/core/task/task.c) |
+| | Scheduling | [`scheduler.c`](src/kernel/core/sched/scheduler.c) |
+| | Paging (Sv39), copy-on-write | [`vpages.c`](src/kernel/core/memory/vpages.c), [`trap.c`](src/arch/trap.c) |
+| | `mmap` | [`mmap.c`](src/kernel/core/memory/mmap.c) |
+| Concurrency | Locks, semaphores, wait queues | [`sync/`](src/kernel/core/sync) |
+| | Threads | [`thread.c`](src/user/lib/thread.c) |
+| Persistence | Block device | [`virtio_blk.c`](src/kernel/drivers/blk/virtio_blk.c) |
+| | Buffer cache, inodes, files, pipes | [`fs/`](src/kernel/core/fs) |
 
 ---
 
-## Build & Run
+## Quick start
 
-### Kernel (text mode)
+Requires `riscv64-elf-gcc`, `qemu-system-riscv64`, `cmake` and
+[`uv`](https://github.com/astral-sh/uv) for the tests.
 
 ```bash
-cd src/
+cd src
 cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=riscv64-toolchain.cmake
-cd build/
-make run
+cmake --build build --target run      # serial console
+cmake --build build --target rung     # framebuffer console
 ```
 
-### Kernel (graphical mode)
+In the shell, `help` lists the built-in programs (CoW fork, threads, pipes,
+`mmap`, segfault isolation…).
 
-```bash
-make rung
-```
+**Tests**: `cmake --build build --target integration` boots the kernel in QEMU
+and drives every shell program from pytest.
 
-### Debug (GDB over TCP)
-
-```bash
-make debug   # text mode + GDB server on :1234
-make debugg  # graphical mode + GDB server on :1234
-```
-
-Then attach with:
-
-```bash
-bash debug.sh   # wrapper around gdb with .gdbinit preset
-```
-
-### Unit Tests
-
-```bash
-cd tests/
-cmake -B build -S .
-cd build/
-make tests
-```
+**Debug**: `--target debug` starts a GDB server on `:1234`, then `bash debug.sh`.
 
 ---
 
-## Academic Context
+## Roadmap
 
-This project was developed as part of the **Operating Systems** course at [Ensimag](https://ensimag.grenoble-inp.fr/) (Grenoble INP — école nationale supérieure d'informatique et de mathématiques appliquées de Grenoble).
-
-**Supervisor:** Sébastien Viardot
-
-The project started from a minimal RISC-V bootstrap and was progressively extended with a scheduler, synchronization primitives, a dynamic allocator, and an interactive shell.
+- [ ] **SMP**: per-hart state, scheduler lock handoff, IPIs, TLB shootdown
+- [ ] User utilities (`ls`, `cat`, `echo`, `ps`) and shell pipes / redirections
+- [ ] Design notes per subsystem, each mapped to its Linux counterpart
