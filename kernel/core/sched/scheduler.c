@@ -15,16 +15,6 @@
 #include <kernel/vpages.h>
 #include <kernel/waitqueue.h>
 
-/**
- * @brief This counter is used to disable the scheduler preemption.
- */
-static uint32_t preempt_count;
-
-/**
- * @brief Flag indicated a delayed schedule operation.
- */
-static bool need_resched;
-
 extern void ctx_sw(ctx_t *old_ctx, ctx_t *new_ctx);
 
 /** @brief Priority mapped ready queues. */
@@ -38,12 +28,31 @@ static clist_node_t sleeping_head;
 
 static inline bool preempt_disabled(void)
 {
-	return preempt_count > 0;
+	return this_cpu()->preempt_count > 0;
 }
 
 static inline void delay_schedule(void)
 {
-	need_resched = true;
+	this_cpu()->need_resched = true;
+}
+
+void scheduler_disable_preempt(void)
+{
+	this_cpu()->preempt_count++;
+}
+
+bool scheduler_preemptible(void)
+{
+	return this_cpu()->preempt_count == 0;
+}
+
+void scheduler_enable_preempt(void)
+{
+	struct cpu *hart = this_cpu();
+	if (--hart->preempt_count == 0 && hart->need_resched) {
+		hart->need_resched = false;
+		scheduler_rotate();
+	}
 }
 
 /** @brief Init all the ready queues and the priority flag. */
@@ -292,28 +301,9 @@ void scheduler_admit(task_t *task)
 	irq_restore(flags);
 }
 
-void scheduler_disable_preempt(void)
-{
-	preempt_count++;
-}
-
-bool scheduler_preemptible(void)
-{
-	return preempt_count == 0;
-}
-
-void scheduler_enable_preempt(void)
-{
-	preempt_count--;
-	if (preempt_count == 0 && need_resched) {
-		need_resched = false;
-		scheduler_rotate();
-	}
-}
-
 void scheduler_rotate(void)
 {
-	if (preempt_count > 0) {
+	if (preempt_disabled()) {
 		// Preempt disable -> skip
 		return;
 	}

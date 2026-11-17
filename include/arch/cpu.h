@@ -5,9 +5,40 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <lib/stdio.h>
 
 #include <arch/csr.h>
+
+typedef struct task task_t;
+
+/**
+ * @class cpu
+ * @brief Structure pointed by the tp register.
+ */
+struct cpu {
+	uint32_t hartid;
+	task_t *active;
+	uint32_t preempt_count;
+	bool need_resched;
+};
+
+extern struct cpu harts[NCPU];
+
+static inline struct cpu *this_cpu(void)
+{
+	struct cpu *tp;
+	__asm__("mv %0, tp" : "=r"(tp));
+	return tp;
+}
+
+/**
+ * @brief Init the tp register with the init cpu. 
+ * @warn This MUST be call in M mode.
+ */
+void init_cpu(unsigned long hartid);
 
 /**
  * @brief Memory barrier for IO DMA coherency.

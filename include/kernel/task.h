@@ -90,6 +90,9 @@ typedef struct task {
 	struct file *fdtable[NOFILE]; //< Task specific file descriptor table.
 } task_t;
 
+/** @brief Create the idle task and make it active. */
+int task_enter_idle(void);
+
 /**
  * @brief Make a task the active one, demoting the previous one to READY.
  *

@@ -1,7 +1,6 @@
 #include <lib/err.h>
 #include <lib/stdio.h>
 
-
 #include <drivers/console.h>
 
 #include <arch/csr.h>
@@ -18,7 +17,7 @@
 #define DELAY (TIMER_FREQ / ITFREQ)
 
 /** @brief Global irq tick counter. */
-static uint32_t ticks;
+static uint32_t ticks = 0;
 
 static inline void enable_sstc_extension(void)
 {
@@ -28,11 +27,6 @@ static inline void enable_sstc_extension(void)
 static inline void enable_stimecmp(void)
 {
 	csr_set(mcounteren, MCOUNTEREN_TM);
-}
-
-static inline void enable_s_timer(void)
-{
-	csr_set(sie, SIE_STIE);
 }
 
 /** @brief Arm the supervisor timer comparator for the next tick. */
@@ -94,16 +88,12 @@ int time_spawn_daemons(void)
 	}
 
 	return 0;
-
 }
 
 void time_init(void)
 {
 	enable_sstc_extension();
-	enable_s_timer();
 	enable_stimecmp();
-
-	ticks = 0;
 	update_timer();
 }
 

@@ -413,8 +413,6 @@ int mmap_kernel(void)
 		goto err_free_root;
 	}
 
-	mmap_switch_to_kernel();
-
 	return 0;
 
 err_free_root:

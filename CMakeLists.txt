@@ -5,6 +5,9 @@ project(
     ASM
 )
 
+set(NCPU 1 CACHE STRING "Number of CPU")
+add_compile_definitions(NCPU=${NCPU})
+
 add_subdirectory(lib)
 add_subdirectory(user)
 add_subdirectory(kernel/core)
@@ -101,6 +104,8 @@ set(QEMU_BASE_OPTS
     -bios
     none
     -no-reboot
+    -smp
+    ${NCPU}
     ${QEMU_DISK_OPTS}
 )
 

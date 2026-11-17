@@ -6,6 +6,8 @@
 #pragma once
 #include <stdint.h>
 
+#include "arch/csr.h"
+
 /**
  * @brief Get the uptime.
  *
@@ -33,3 +35,8 @@ void time_irq_handler(void);
 
  */
 int time_spawn_daemons(void);
+
+static inline void time_enable_s_irq(void)
+{
+	csr_set(sie, SIE_STIE);
+}

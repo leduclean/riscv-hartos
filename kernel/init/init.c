@@ -10,6 +10,7 @@
 #include <drivers/uart.h>
 #include <drivers/virtio_blk.h>
 
+#include <arch/asm_defs.h>
 #include <arch/cpu.h>
 #include <arch/plic.h>
 #include <arch/trap.h>
@@ -18,6 +19,7 @@
 #include <kernel/memory.h>
 #include <kernel/mmap.h>
 #include <kernel/pages.h>
+#include <kernel/scheduler.h>
 #include <kernel/task.h>
 #include <kernel/time.h>
 #include <user/kinterface.h>
@@ -26,6 +28,27 @@
  * @brief User elf included via user_app.S.
  */
 extern char _user_elf_start[];
+
+/** @brief Kernel entry point, called by all other hart than hart0 is cleared. */
+[[noreturn]] void kernel_start(void)
+{
+	mmap_switch_to_kernel();
+
+	printf("[INFO] init task \n");
+	int res = task_enter_idle();
+	if (res < 0) {
+		panic("[FAILURE] Init idle has failed");
+	}
+
+	irq_enable_s();
+	printf("[INFO] S irq enabled\n");
+
+	time_enable_s_irq();
+	plic_enable_s_external();
+	plic_set_treshold(0);
+
+	task_idle();
+}
 
 /**
  * @brief Handle all the blocking initialization.
@@ -57,14 +80,27 @@ static void init(void)
 	file_put(user_elf);
 }
 
-/** @brief Kernel entry point, called by crt0 once the bss is cleared. */
-[[noreturn]] void kernel_start(void)
+extern void enter_kernel(void (*entry)(void));
+extern void delegate_traps(void);
+
+bool boot_rdy = false;
+
+/**
+ * @brief Supervisor boot byt hart0.
+ */
+void sboot(void)
 {
 	int res;
+
+	/* We start with uart to have immediat debug printf */
+	uart_init();
+	page_init();
+
 	res = mmap_kernel();
 	if (res < 0) {
 		panic("[FAILURE] Kernel map has failed");
 	}
+	mmap_switch_to_kernel();
 
 	res = console_init();
 	if (res < 0) {
@@ -79,62 +115,55 @@ static void init(void)
 			panic("[FAILURE] Virtio blk driver init has failed");
 		}
 	}
-
 	ta_init(_kheap_start, _kheap_end, TA_HEAP_BLOCK, TA_BLOCK_SPLIT,
 		TA_ALIGNMENT);
-	printf("[INFO] Tiny alloc initialized \n");
 
-	printf("[INFO] init task \n");
-	task_init();
+	//NOTE: for now we only have one runqueue, this might be
+	// called per hart id when separate runqueus.
+	scheduler_init();
+
+	res = task_enter_idle();
 	if (res < 0) {
-
-		panic("[FAILURE] Init task has failed");
+		panic("[FAILURE] Init idle has failed");
 	}
 
-	/*WARNING: from here we are in the idle task.
-     * This task cannot sleep so if a task as io, use init() 
-     * task to do it. */
-	printf("[INFO] S irq enabled\n");
 	irq_enable_s();
-
-	printf("[INFO] external irq enabled\n");
-	plic_init();
-
-	res = time_spawn_daemons();
-	if (res < 0) {
-		panic("[FAILURE] Time daemon spawn has failed");
-	}
+	time_enable_s_irq();
+	plic_enable_s_external();
+	plic_set_treshold(0);
 
 	res = uart_spawn_daemons();
 	if (res < 0) {
 		panic("[FAILURE] Uart daemon spawn has failed");
 	}
 
+	res = time_spawn_daemons();
+	if (res < 0) {
+		panic("[FAILURE] time daemon spawn has failed");
+	}
+
 	if (IS_ERR(task_kthread(init, "init", NORMAL))) {
 		printf("[FAILURE]: failed to spawn init kthread \n");
 	}
 
+	m2m_wmb();
+
+	boot_rdy = true;
 	task_idle();
 }
 
-extern void enter_kernel(void (*entry)(void));
-extern void delegate_traps(void);
-
-/**
- * @brief Boot entry point in machine mode.
- */
-void start(void)
+void hart_init([[maybe_unused]] unsigned long hartid)
 {
-	page_init();
-	//TODO: Maybe it should resides in S mode
-	uart_init();
 	pmp_allow_all();
 	delegate_traps();
 	trap_init();
-
-	// Timer init.
-	// WARNING: this should always resides
-	// just before entering the kernel and S mode.
 	time_init();
-	enter_kernel(kernel_start);
+
+	void (*entry)(void);
+	if (hartid == BOOT_HART_ID) {
+		entry = sboot;
+	} else {
+		entry = kernel_start;
+	}
+	enter_kernel(entry);
 }

@@ -5,6 +5,12 @@
 
 #pragma once
 
+#ifndef NCPU
+#error "The number of NCPU should be defined"
+#endif
+
+#define BOOT_HART_ID 0 /**< Hart id of the hart that boot the os. */
+
 #define MAX_VA (1L << 38)
 
 // Each page as a size of 4096 bytes

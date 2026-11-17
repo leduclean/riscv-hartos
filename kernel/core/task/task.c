@@ -42,9 +42,6 @@ static ptable_t task_table = { .lock = SPINLOCK_UNLOCKED,
 			       .head = CLIST_NODE_INITIALIZER(
 				       task_table.head) };
 
-/** @brief Currently running task. */
-static task_t *active = NULL;
-
 /**
  * @brief Remove a task from all the blocking queues it could wait on.
  *
@@ -179,30 +176,29 @@ static void ktask_launcher(void)
 	scheduler_exit_group(0);
 }
 
-/** @brief Create the idle task and make it active. */
-static int init_idle(void)
+int task_enter_idle(void)
 {
 	task_t *p = task_kthread(task_idle, "idle", IDLE);
 	if (IS_ERR(p)) {
 		return PTR_ERR(p);
 	}
-	active = p;
-	active->state = RUNNING;
+	this_cpu()->active = p;
+	this_cpu()->active->state = RUNNING;
 	return 0;
 }
 
 task_t *task_active(void)
 {
-	return active;
+	return this_cpu()->active;
 }
 
 void task_switch_active(task_t *next)
 {
-	if (active->state == RUNNING)
-		active->state = READY;
+	if (this_cpu()->active->state == RUNNING)
+		this_cpu()->active->state = READY;
 
 	next->state = RUNNING;
-	active = next;
+	this_cpu()->active = next;
 }
 
 int task_table_for_each(int (*func)(clist_node_t *node, void *), void *args)
@@ -705,16 +701,6 @@ int task_map_console(task_t *p)
 	p->fdtable[STDIN] = f;
 
 	return 0;
-}
-
-int task_init(void)
-{
-	int res;
-
-	scheduler_init();
-	res = init_idle();
-
-	return res;
 }
 
 void task_idle(void)

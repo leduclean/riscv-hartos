@@ -1,13 +1,13 @@
 #include <stdint.h>
 
-#include <arch/cpu.h>
-#include <arch/csr.h>
 #include <lib/mmio.h>
 
 #include <drivers/uart.h>
 #include <drivers/virtio_blk.h>
 
 #include <arch/board.h>
+#include <arch/cpu.h>
+#include <arch/csr.h>
 #include <kernel/time.h>
 
 /* Register map offsets, named after the RISC-V PLIC spec "Memory Map" */
@@ -21,9 +21,7 @@
 
 static inline uint32_t get_context(void)
 {
-	//FIX: Context in S mode for hart0 is 1
-	//in multihart not true
-	return 1;
+	return 2 * this_cpu()->hartid + 1;
 }
 
 static inline uintptr_t priority_reg(uint32_t irq_id)
@@ -47,11 +45,6 @@ static inline uintptr_t threshold_reg(uint32_t ctx)
 static inline uintptr_t claim_complete_reg(uint32_t ctx)
 {
 	return threshold_reg(ctx) + PLIC_CLAIM_COMPLETE_OFF;
-}
-
-static inline void plic_enable_s_external(void)
-{
-	csr_set(sie, SIE_SEIE);
 }
 
 /**
@@ -81,19 +74,13 @@ static void plic_set_pty(uint32_t irq_id, uint32_t priority)
  *
  * @param threshold Threshold to set.
  */
-static void set_priority_treshold(uint32_t threshold)
+void plic_set_treshold(uint32_t threshold)
 {
 	if (threshold > 7) {
 		threshold = 7;
 	}
 
 	MMIO32(threshold_reg(get_context())) = threshold;
-}
-
-void plic_init(void)
-{
-	set_priority_treshold(0);
-	plic_enable_s_external();
 }
 
 void plic_enable_irq(uint32_t irq_id, uint32_t priority)
