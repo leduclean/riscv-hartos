@@ -182,6 +182,8 @@ int task_enter_idle(void)
 	if (IS_ERR(p)) {
 		return PTR_ERR(p);
 	}
+	/* The running task never sits in a ready queue. */
+	clist_remove(&p->ready_node);
 	this_cpu()->active = p;
 	this_cpu()->active->state = RUNNING;
 	return 0;

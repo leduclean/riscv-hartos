@@ -18,13 +18,35 @@
 extern void ctx_sw(ctx_t *old_ctx, ctx_t *new_ctx);
 
 /** @brief Priority mapped ready queues. */
-static clist_node_t ready_queues[PRIORITY_COUNT];
-
+static clist_node_t rqs[PRIORITY_COUNT];
 /** @brief Highest ready priority. */
-static priority highest_ready_tracking;
+static priority highest_rdy;
 
-/** @brief Tasks sleeping on a timer, sorted by wake up date. */
-static clist_node_t sleeping_head;
+/**
+ * @brief Check if a task should change the highest priority flag.
+ *
+ * @param task Task to check on.
+ */
+static void update_highest(task_t *task)
+{
+	priority prior_class = task->priority;
+	if (priority_higher(prior_class, highest_rdy)) {
+		highest_rdy = prior_class;
+	}
+}
+
+/**
+ * @brief Add a task at the end of its corresponding priority ready queue.
+ *
+ * @param task Task to enqueue.
+ */
+static void rq_enqueue(task_t *task)
+{
+	update_highest(task);
+	priority prior_class = task->priority;
+	clist_node_t *rq = &rqs[prior_class];
+	clist_push_back(rq, &task->ready_node);
+}
 
 static inline bool preempt_disabled(void)
 {
@@ -60,60 +82,11 @@ static void init_ready_queues(void)
 {
 	// Reset all the node of the ready queue
 	for (int i = 0; i < PRIORITY_COUNT; i++) {
-		clist_node_t *current_head = &ready_queues[i];
+		clist_node_t *current_head = &rqs[i];
 		clist_init_node(current_head);
 	}
 	// The initiate prioity should be IDLE
-	highest_ready_tracking = IDLE;
-}
-
-/** @brief Init the sleeping queue. */
-static void init_sleep_queue(void)
-{
-	clist_init_node(&sleeping_head);
-}
-
-/**
- * @brief Add a task at the end of its corresponding priority ready queue.
- *
- * @param task Task to enqueue.
- */
-static void ready_queue_enqueue(task_t *task)
-{
-	priority prior_class = task->priority;
-	clist_node_t *rq = &ready_queues[prior_class];
-	clist_push_back(rq, &task->ready_node);
-}
-
-/**
- * @brief Remove a task from the ready queue it is in.
- *
- * @param task Task to remove.
- */
-static inline void ready_queue_remove(task_t *task)
-{
-	if (!clist_is_in_list(&task->ready_node))
-		return;
-	clist_remove(&task->ready_node);
-}
-
-/**
- * @brief Round robin circular rotation of a ready queue.
- *
- * @note This function also gives the next task to switch on.
- *
- * @param rq Ready queue to rotate on.
- * @return Pointer to the next task.
- */
-static task_t *rotate_ready_queue(clist_node_t *rq)
-{
-	// Nothing to do if the queue is empty or there is only one element
-	if (clist_empty(rq) || rq->next->next == rq)
-		return container_of(clist_first(rq), task_t, ready_node);
-	clist_node_t *first = clist_pop_front(rq);
-	clist_push_back(rq, first);
-
-	return container_of(clist_first(rq), task_t, ready_node);
+	highest_rdy = IDLE;
 }
 
 /**
@@ -121,9 +94,9 @@ static task_t *rotate_ready_queue(clist_node_t *rq)
  *
  * @return Pointer to the highest priority queue (clist).
  */
-static inline clist_node_t *pick_highest(void)
+static inline clist_node_t *highest_rq(void)
 {
-	return &ready_queues[highest_ready_tracking];
+	return &rqs[highest_rdy];
 }
 
 /**
@@ -135,30 +108,17 @@ static inline clist_node_t *pick_highest(void)
 static void refresh_highest_prio(void)
 {
 	// Test the supposate highest prio
-	if (!clist_empty(&ready_queues[highest_ready_tracking])) {
+	if (!clist_empty(&rqs[highest_rdy])) {
 		return;
 	}
 
 	// scan the other queues (lower priority state are higher in priority index )
-	for (int p = highest_ready_tracking + 1; p < PRIORITY_COUNT; p++) {
-		if (!clist_empty(&ready_queues[p])) {
+	for (int p = highest_rdy + 1; p < PRIORITY_COUNT; p++) {
+		if (!clist_empty(&rqs[p])) {
 			// Update the new highest prio
-			highest_ready_tracking = p;
+			highest_rdy = p;
 			break;
 		}
-	}
-}
-
-/**
- * @brief Check if a task should change the highest priority flag.
- *
- * @param task Task to check on.
- */
-static void update_highest(task_t *task)
-{
-	priority prior_class = task->priority;
-	if (priority_higher(prior_class, highest_ready_tracking)) {
-		highest_ready_tracking = prior_class;
 	}
 }
 
@@ -174,30 +134,17 @@ static void do_ctx_switch(task_t *next)
 	ctx_sw(old_ctx, &next->ctx);
 }
 
-/**
- * @brief Check if a priority preemption is needed and possible and does it if needed.
- *
- * @param task Task that may preempt the active one.
- */
-static void check_and_preempt(task_t *task)
+static inline clist_node_t *pick_next(void)
 {
+	clist_node_t *next_node = clist_pop_front(highest_rq());
+	refresh_highest_prio();
+	return next_node;
+}
 
+static inline void put_prev(void)
+{
 	task_t *current = task_active();
-
-	if (!current) {
-		return;
-	}
-
-	priority prior = task->priority;
-	priority current_prior = current->priority;
-	if (priority_higher(prior, current_prior)) {
-		if (preempt_disabled()) {
-			delay_schedule();
-		} else {
-			// Immediatly switch to this task
-			do_ctx_switch(task);
-		}
-	}
+	rq_enqueue(current);
 }
 
 /**
@@ -209,10 +156,62 @@ static void check_and_preempt(task_t *task)
 static void switch_out_active(void)
 {
 	unsigned long flags = irq_save();
+	clist_node_t *next_node = pick_next();
+	if (!next_node) {
+		panic("No idle task is available.");
+	}
 
-	refresh_highest_prio();
-	clist_node_t *next_node = clist_first(pick_highest());
 	do_ctx_switch(container_of(next_node, task_t, ready_node));
+	irq_restore(flags);
+}
+
+void scheduler_rotate(void)
+{
+	if (preempt_disabled()) {
+		delay_schedule();
+		return;
+	}
+
+	unsigned long flags = irq_save();
+	put_prev();
+	clist_node_t *next_node = pick_next();
+	if (!next_node) {
+		/* No other task, there should always be idle at least. */
+		panic("No other task available");
+	}
+	if (next_node == &task_active()->ready_node) {
+		/* Only this task is ready, no switch */
+		irq_restore(flags);
+		return;
+	}
+
+	do_ctx_switch(container_of(next_node, task_t, ready_node));
+	irq_restore(flags);
+}
+
+/**
+ * @brief Check if a priority preemption is needed and possible and does it if needed.
+ *
+ * @param task Task that may preempt the active one.
+ */
+static void check_and_preempt(task_t *task)
+{
+	task_t *current = task_active();
+	if (!current) {
+		return;
+	}
+
+	if (priority_higher(task->priority, current->priority)) {
+		scheduler_rotate();
+	}
+}
+
+void scheduler_admit(task_t *task)
+{
+	unsigned long flags = irq_save();
+
+	rq_enqueue(task);
+	check_and_preempt(task);
 
 	irq_restore(flags);
 }
@@ -230,6 +229,9 @@ static inline int wake_up_cmp(clist_node_t *current, clist_node_t *other)
 	task_t *other_task = container_of(other, task_t, sleep_node);
 	return (cur_task->wake_up_time > other_task->wake_up_time);
 }
+
+/** @brief Tasks sleeping on a timer, sorted by wake up date. */
+static clist_node_t sleeping_head = CLIST_NODE_INITIALIZER(sleeping_head);
 
 /**
  * @brief Insert a task in the sleeping queue, sorted by wake up time.
@@ -269,69 +271,18 @@ static inline int wake_up_sleeping_cb(clist_node_t *node, void *arg)
  */
 static inline void move_to_wq(task_t *task, wait_queue_t *wq)
 {
-	ready_queue_remove(task);
 	task_block(task);
 	wq_enqueue(wq, &task->wait_node);
-}
-
-/**
- * @brief Wake up policy applied to a wait queue.
- *
- * @param current Node to compute on.
- * @param args Additional args, unused.
- * @return 0 (invariant).
- */
-static inline int wake_up_waiting_cb(clist_node_t *current, void *args)
-{
-	// args is unused but needed for the for a for each callback
-	(void)args;
-	// Wake up the task from the waiting queue
-	scheduler_ready_task(container_of(current, task_t, wait_node));
-	return 0;
-}
-
-void scheduler_admit(task_t *task)
-{
-	unsigned long flags = irq_save();
-
-	ready_queue_enqueue(task);
-	update_highest(task);
-	check_and_preempt(task);
-
-	irq_restore(flags);
-}
-
-void scheduler_rotate(void)
-{
-	if (preempt_disabled()) {
-		// Preempt disable -> skip
-		return;
-	}
-
-	unsigned long flags = irq_save();
-
-	task_t *next = rotate_ready_queue(pick_highest());
-	if (next != task_active())
-		do_ctx_switch(next);
-
-	irq_restore(flags);
 }
 
 void scheduler_ready_task(task_t *task)
 {
 	unsigned long flags = irq_save();
 
-	// Wake the task
 	task_wake(task);
-
-	// Update the highest if needed
-	update_highest(task);
-
-	// Insert in the correct run queue
-	ready_queue_enqueue(task);
-
-	// Preempt if needed
+	rq_enqueue(task);
 	check_and_preempt(task);
+
 	irq_restore(flags);
 }
 
@@ -373,7 +324,6 @@ void scheduler_sleep(uint32_t nbr_secs)
 	unsigned long flags = irq_save();
 
 	task_t *task = task_active();
-	ready_queue_remove(task);
 	task_sleep(task, nbr_secs);
 	insert_sleep(task);
 	switch_out_active();
@@ -428,6 +378,21 @@ void scheduler_block_on_with_timeout(wait_queue_t *wq, uint32_t timeout_secs)
 	irq_restore(flags);
 }
 
+/**
+ * @brief Wake up policy applied to a wait queue.
+ *
+ * @param current Node to compute on.
+ * @param args Additional args, unused.
+ * @return 0 (invariant).
+ */
+static inline int wake_up_waiting_cb(clist_node_t *current,
+				     [[maybe_unused]] void *args)
+{
+	// Wake up the task from the waiting queue
+	scheduler_ready_task(container_of(current, task_t, wait_node));
+	return 0;
+}
+
 void scheduler_wake_waiting_queue(wait_queue_t *wq)
 {
 	unsigned long flags = irq_save();
@@ -438,5 +403,4 @@ void scheduler_wake_waiting_queue(wait_queue_t *wq)
 void scheduler_init(void)
 {
 	init_ready_queues();
-	init_sleep_queue();
 }
