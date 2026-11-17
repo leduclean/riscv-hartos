@@ -1,14 +1,13 @@
 #include <stdint.h>
 
 #include <lib/err.h>
+#include <lib/mmio.h>
 #include <lib/stdio.h>
 
-#include <arch/board.h>
-#include <lib/mmio.h>
-
-#include <arch/plic.h>
 #include <drivers/uart.h>
 
+#include <arch/board.h>
+#include <arch/plic.h>
 #include <kernel/scheduler.h>
 #include <kernel/semaphore.h>
 #include <kernel/waitqueue.h>
@@ -106,7 +105,7 @@ void uart_init(void)
 	uart_enable_fifo();
 	uart_config_lcr();
 	uart_enable_rxirq();
-	plic_enable_irq(UART_PLIC_ID, 3);
+	plic_set_pty(UART_PLIC_ID, 3);
 };
 
 void uart_putchar(char c)
@@ -153,13 +152,11 @@ static void fill_rx_buff_daemon(void)
 
 int uart_spawn_daemons(void)
 {
-	task_t *p = task_kthread(fill_rx_buff_daemon, "uart rx daem",
-				       HIGH);
+	task_t *p = task_kthread(fill_rx_buff_daemon, "uart rx daem", HIGH);
 	if (IS_ERR(p)) {
 		return PTR_ERR(p);
 	}
 	return 0;
-
 }
 
 void uart_read(char *c)

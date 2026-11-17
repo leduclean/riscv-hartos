@@ -10,12 +10,22 @@
 #include <arch/csr.h>
 
 /**
- * @brief Enable a specific external device irq.
+ * @brief Enable a specific external device irq, at hart level.
  *
  * @param irq_id The PLIC id of the peripheric.
- * @param priority The wanted priority of the irq.
  */
-void plic_enable_irq(uint32_t irq_id, uint32_t priority);
+void plic_enable_irq(uint32_t irq_id);
+
+/**
+ * @brief Set the global (not pre hart) pty of this irq.
+ *
+ * @note The range of priority is between 0 and 7, 0 meaning never interrupt.
+ * A higher value is clamped to 7.
+ *
+ * @param irq_id Plic source id of the device.
+ * @param priority Priority to set.
+ */
+void plic_set_pty(uint32_t irq_id, uint32_t priority);
 
 /**
  * @brief Set the priority threshold of the plic target.

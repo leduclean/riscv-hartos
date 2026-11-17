@@ -45,6 +45,11 @@ extern char _user_elf_start[];
 
 	time_enable_s_irq();
 	plic_enable_s_external();
+
+	/** Enable on all hart thos irq */
+	plic_enable_irq(VIRTIO_BLK_PLIC_ID);
+	plic_enable_irq(UART_PLIC_ID);
+
 	plic_set_treshold(0);
 
 	task_idle();
@@ -130,6 +135,8 @@ void sboot(void)
 	irq_enable_s();
 	time_enable_s_irq();
 	plic_enable_s_external();
+	plic_enable_irq(VIRTIO_BLK_PLIC_ID);
+	plic_enable_irq(UART_PLIC_ID);
 	plic_set_treshold(0);
 
 	res = uart_spawn_daemons();

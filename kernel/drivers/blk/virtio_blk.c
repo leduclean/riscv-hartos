@@ -4,13 +4,12 @@
 #include <lib/bit.h>
 #include <lib/err.h>
 
-#include <arch/board.h>
-#include <arch/cpu.h>
-
 #include <drivers/pci.h>
-#include <arch/plic.h>
 #include <drivers/virtio_blk.h>
 
+#include <arch/board.h>
+#include <arch/cpu.h>
+#include <arch/plic.h>
 #include <kernel/mmap.h>
 #include <kernel/pages.h>
 #include <kernel/semaphore.h>
@@ -310,7 +309,6 @@ static int config_pci(void)
 		return -ENODEV;
 	}
 
-
 	int64_t size = pci_get_bar_size(&dev, cap_cfg->bar);
 	if (size < 0) {
 		return size;
@@ -347,7 +345,7 @@ int virtio_blk_init(void)
 		return res;
 	}
 
-	plic_enable_irq(VIRTIO_BLK_PLIC_ID, 3);
+	plic_set_pty(VIRTIO_BLK_PLIC_ID, 3);
 
 	return 0;
 }

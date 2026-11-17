@@ -48,7 +48,7 @@ static inline uintptr_t claim_complete_reg(uint32_t ctx)
 }
 
 /**
- * @brief Set the priority of a specific irq device.
+ * @brief Set the global (not pre hart) pty of this irq.
  *
  * @note The range of priority is between 0 and 7, 0 meaning never interrupt.
  * A higher value is clamped to 7.
@@ -56,7 +56,7 @@ static inline uintptr_t claim_complete_reg(uint32_t ctx)
  * @param irq_id Plic source id of the device.
  * @param priority Priority to set.
  */
-static void plic_set_pty(uint32_t irq_id, uint32_t priority)
+void plic_set_pty(uint32_t irq_id, uint32_t priority)
 {
 	if (priority > 7) {
 		// range is between 0 and 7.
@@ -83,10 +83,9 @@ void plic_set_treshold(uint32_t threshold)
 	MMIO32(threshold_reg(get_context())) = threshold;
 }
 
-void plic_enable_irq(uint32_t irq_id, uint32_t priority)
+void plic_enable_irq(uint32_t irq_id)
 {
 	MMIO32(enable_reg(get_context(), irq_id)) |= 1u << (irq_id % 32);
-	plic_set_pty(irq_id, priority);
 }
 
 /**
@@ -113,6 +112,9 @@ static void complete_plic(uint32_t irq)
 void plic_handle_irq(void)
 {
 	uint32_t irq = claim_plic();
+	if (irq == 0) {
+		return; /* Already claimed by another hart */
+	}
 	switch (irq) {
 	case UART_PLIC_ID:
 		uart_irq_handler();

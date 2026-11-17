@@ -13,7 +13,7 @@
 
 /* Platform level interrupt controller */
 #define PLIC_MMIO_BASE 0x0c000000UL
-#define PLIC_MMIO_SIZE 0x202000UL
+#define PLIC_MMIO_SIZE (0x200000UL + 2 * NCPU * 0x1000)
 
 #define PCI_ECAM_BASE_ADDRESS 0x30000000 /* Base address of the pci bus */
 #define PCI_ECAM_SIZE (1 << 20) /* Size of the pci bus (we only use 1 bus) */
