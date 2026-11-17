@@ -10,6 +10,13 @@
 #include <kernel/task.h>
 
 /**
+ * @brief Remove a task from all the scheduling queues it could be in.
+ *
+ * @param task Task to remove from the queues.
+ */
+void scheduler_rm_from_sched_queues(task_t *task);
+
+/**
  * @brief Preemption state of the scheduler. 
  */
 bool scheduler_preemptible(void);

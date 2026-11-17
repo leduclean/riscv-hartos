@@ -43,50 +43,6 @@ static ptable_t task_table = { .lock = SPINLOCK_UNLOCKED,
 				       task_table.head) };
 
 /**
- * @brief Remove a task from all the blocking queues it could wait on.
- *
- * @note This function is **not atomic**. The caller MUST ensure atomicity.
- *
- * @param task Task to clear.
- */
-static void remove_from_blocking_queues(task_t *task)
-{
-	if (clist_is_in_list(&task->sleep_node))
-		clist_remove(&task->sleep_node);
-	if (clist_is_in_list(&task->wait_node)) {
-		clist_remove(&task->wait_node);
-	}
-}
-
-/**
- * @brief Remove a task from all the scheduling queues it could be in.
- *
- * @note This function is **not atomic**. The caller MUST ensure atomicity.
- *
- * @param task Task to remove from the queues.
- */
-static inline void remove_from_sched_queues(task_t *task)
-{
-	if (clist_is_in_list(&task->ready_node))
-		clist_remove(&task->ready_node);
-	remove_from_blocking_queues(task);
-}
-
-/**
- * @brief Remove a task from all the queues it could be in.
- *
- * @note This function is **not atomic**. The caller MUST ensure atomicity.
- *
- * @param task Task to remove from the queues.
- */
-static inline void remove_from_all_queues(task_t *task)
-{
-	if (clist_is_in_list(&task->task_node))
-		clist_remove(&task->task_node);
-	remove_from_sched_queues(task);
-}
-
-/**
  * @brief Reset all the nodes and the wait queues of a task.
  *
  * @param task Task to reset.
@@ -155,9 +111,12 @@ static inline void free_skeleton(task_t *t)
  */
 static void activate_task(task_t *p)
 {
+	spinlock_lock(&task_table.lock);
 	p->state = READY;
 	clist_push_back(&task_table.head, &p->task_node);
 	task_table.active_task++;
+	spinlock_unlock(&task_table.lock);
+
 	scheduler_admit(p);
 	return;
 }
@@ -236,8 +195,6 @@ void task_wake(task_t *task)
 {
 	unsigned long state = irq_save();
 	if ((task->state == SLEEPING) || (task->state == BLOCKED)) {
-		// Remove it from sleeping and blocked queue if remaining
-		remove_from_blocking_queues(task);
 		task->state = RUNNING;
 	}
 	irq_restore(state);
@@ -265,7 +222,8 @@ void task_zombify(task_t *task, int exit_code)
 	task->state = ZOMBIE;
 	task->exit_code = exit_code;
 
-	remove_from_sched_queues(task);
+	scheduler_rm_from_sched_queues(task);
+
 	release_fds(task);
 	clist_push_back(&parent->zombies, &task->wait_node);
 
@@ -286,7 +244,11 @@ void task_destroy(task_t *task)
 	}
 
 	task->state = TERMINATED;
-	remove_from_all_queues(task);
+	scheduler_rm_from_sched_queues(task);
+
+	spinlock_lock(&task_table.lock);
+	clist_remove(&task->task_node);
+	spinlock_unlock(&task_table.lock);
 
 	if (task->mm) {
 		vpage_unmmap(task->mm->root, task->tframe_va);

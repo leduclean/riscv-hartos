@@ -5,7 +5,7 @@ project(
     ASM
 )
 
-set(NCPU 1 CACHE STRING "Number of CPU")
+set(NCPU 2 CACHE STRING "Number of CPU")
 add_compile_definitions(NCPU=${NCPU})
 
 add_subdirectory(lib)
