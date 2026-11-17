@@ -425,10 +425,9 @@ static int transfer_argv(pte_t *old_ptable, pte_t *new_ptable,
 task_t *task_start_userland(struct file *user_elf, const char *name,
 			    priority prior)
 {
-	unsigned long state = irq_save();
 	task_t *p = alloc_squeletton(name, prior, true, task_active());
 	if (IS_ERR(p)) {
-		goto err_restore_irq;
+		return p;
 	}
 
 	p->ctx.sp = (uint64_t)&p->kstack[KSTACK_SIZE];
@@ -452,14 +451,11 @@ task_t *task_start_userland(struct file *user_elf, const char *name,
 
 	copy_fds(p, task_active(), false);
 	activate_task(p);
-	irq_restore(state);
 	return p;
 
 err_free_task:
 	free(p);
 	p = ERR_PTR(res);
-err_restore_irq:
-	irq_restore(state);
 	return p;
 }
 

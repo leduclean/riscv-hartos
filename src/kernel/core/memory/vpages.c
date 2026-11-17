@@ -327,7 +327,7 @@ int vpage_handle_cow(pte_t *root, uintptr_t va)
 	void *page_va = (void *)(va & ~OFFSET_MASK);
 
 	// Fast path no copy
-	if (page_get_ref_count(page) == 1) {
+	if (page_get_refcnt(page) == 1) {
 		// We are the last that has access to this page
 		*leaf &= ~PTE_COW;
 		*leaf |= PTE_W;

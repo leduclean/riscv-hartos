@@ -14,12 +14,13 @@
  */
 bool scheduler_preemptible(void);
 
-static inline void _might_sleep(const char *file, int line)
+[[gnu::always_inline]] static inline void _might_sleep(const char *file,
+						       int line)
 {
 	/** Check that we are not spining or in a critical section when
      * sleeping. */
 	if (!(irq_is_enable_s() && scheduler_preemptible())) {
-		printf("At %p \n", __builtin_return_address(0));
+		printf("At %p", __builtin_return_address(0));
 		_panic("Sleeping function called with irq on.", file, line);
 	}
 }

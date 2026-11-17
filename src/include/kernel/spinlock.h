@@ -53,7 +53,8 @@ static inline unsigned long spinlock_lock_irq_save(spinlock_t *s)
  * @param s A pointer to the spinlock.
  * @param flags The saved irq flags.
  */
-static inline void spinlock_unlock_irq_restore(spinlock_t *s, unsigned long flags)
+static inline void spinlock_unlock_irq_restore(spinlock_t *s,
+					       unsigned long flags)
 {
 	spinlock_unlock(s);
 	irq_restore(flags);

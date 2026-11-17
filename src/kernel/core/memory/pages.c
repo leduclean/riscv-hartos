@@ -1,13 +1,14 @@
 #include <stddef.h>
+#include <stdint.h>
 
 #include <lib/clist.h>
 #include <lib/stdio.h>
 
 #include <arch/asm_defs.h>
 #include <arch/cpu.h>
-
 #include <kernel/ldsym.h>
 #include <kernel/pages.h>
+#include <kernel/spinlock.h>
 
 /**
  * @typedef page
@@ -15,24 +16,18 @@
  *
  * @note The idiom is that the physical frame contain an initialized node
  * when free and is dirty when allocated.
- *
  */
 typedef struct page {
 	clist_node_t node; //< Clist node for free list.
 } page_t;
 
+/**
+ * @brief Safety: this lock protects the whole page allocator list.
+ */
+static spinlock_t lock = SPINLOCK_UNLOCKED;
 static clist_node_t free_pages;
-static inline void push_free(void *page)
-{
-	page_t *p = page;
-	clist_init_node(&p->node);
-	// LIFO
-	clist_push_front(&free_pages, &p->node);
-}
-
 // Keep in sync with MEMORY in kernel.ld (checked by page_init()).
 #define RAM_SIZE (128UL * 1024 * 1024)
-
 /**
  * @brief Ref counter of every ram page, indexed by page_idx().
  *
@@ -41,22 +36,49 @@ static inline void push_free(void *page)
  */
 static uint8_t page_rc[RAM_SIZE >> PAGE_SHIFT] = { 0 };
 
-static inline size_t page_idx(const void *page)
+static inline void push_free_locked(void *page)
+{
+	page_t *p = page;
+	clist_init_node(&p->node);
+	// LIFO
+	clist_push_front(&free_pages, &p->node);
+}
+
+static inline size_t page_idx_locked(const void *page)
 {
 	return ((uintptr_t)page - (uintptr_t)_ram_start) >> PAGE_SHIFT;
 }
 
-uint8_t page_get_ref_count(const void *page)
+static inline uint8_t page_get_refcnt_locked(const void *page)
 {
-	return page_rc[page_idx(page)];
+	return page_rc[page_idx_locked(page)];
+}
+
+uint8_t page_get_refcnt(const void *page)
+{
+	spinlock_lock(&lock);
+
+	uint8_t refcnt = page_get_refcnt_locked(page);
+
+	spinlock_unlock(&lock);
+
+	return refcnt;
+}
+
+static inline void *page_get_locked(void *page)
+{
+	page_rc[page_idx_locked(page)]++;
+	return (void *)page;
 }
 
 void *page_get(void *page)
 {
-	unsigned long state = irq_save();
-	page_rc[page_idx(page)]++;
-	irq_restore(state);
-	return (void *)page;
+	spinlock_lock(&lock);
+
+	void *p = page_get_locked(page);
+
+	spinlock_unlock(&lock);
+	return p;
 }
 
 void page_init(void)
@@ -66,36 +88,43 @@ void page_init(void)
 	}
 
 	clist_init_node(&free_pages);
+
+	spinlock_lock(&lock);
+
 	for (char *p = _page_start; p < _page_end; p += PAGE_SIZE) {
-		push_free(p);
+		push_free_locked(p);
 	}
+
+	spinlock_unlock(&lock);
 }
 
 void *page_alloc(void)
 {
-	unsigned long state = irq_save();
+	spinlock_lock(&lock);
 
 	void *addr = clist_pop_front(&free_pages);
 	if (!addr) {
-		goto err_restore_irq;
+		goto err_unlock;
 	}
 
 	memset(addr, 0, PAGE_SIZE);
-	page_get(addr);
+	page_get_locked(addr);
 
-err_restore_irq:
-	irq_restore(state);
+err_unlock:
+	spinlock_unlock(&lock);
 	return addr;
 }
 
 void page_put(void *page)
 {
-	unsigned long state = irq_save();
-	if (page_get_ref_count(page) == 0) {
+	spinlock_lock(&lock);
+
+	if (page_get_refcnt_locked(page) == 0) {
 		panic("page_put() on a page nobody holds: double free");
 	}
-	if (--page_rc[page_idx(page)] == 0) {
-		push_free(page);
+	if (--page_rc[page_idx_locked(page)] == 0) {
+		push_free_locked(page);
 	}
-	irq_restore(state);
+
+	spinlock_unlock(&lock);
 }

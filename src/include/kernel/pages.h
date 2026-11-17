@@ -56,7 +56,7 @@ void *page_get(void *page);
  * @param page A pointer to the page.
  * @return The refcounter.
  */
-uint8_t page_get_ref_count(const void *page);
+uint8_t page_get_refcnt(const void *page);
 
 /**
  * @brief Copy the content of a page.
