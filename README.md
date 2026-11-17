@@ -36,14 +36,14 @@ Each concept maps to one place in the source:
 
 | OSTEP | Concept | Code |
 | --- | --- | --- |
-| Virtualization | Processes, `fork` / `exec` / `clone` | [`task.c`](src/kernel/core/task/task.c) |
-| | Scheduling | [`scheduler.c`](src/kernel/core/sched/scheduler.c) |
-| | Paging (Sv39), copy-on-write | [`vpages.c`](src/kernel/core/memory/vpages.c), [`trap.c`](src/arch/trap.c) |
-| | `mmap` | [`mmap.c`](src/kernel/core/memory/mmap.c) |
-| Concurrency | Locks, semaphores, wait queues | [`sync/`](src/kernel/core/sync) |
-| | Threads | [`thread.c`](src/user/lib/thread.c) |
-| Persistence | Block device | [`virtio_blk.c`](src/kernel/drivers/blk/virtio_blk.c) |
-| | Buffer cache, inodes, files, pipes | [`fs/`](src/kernel/core/fs) |
+| Virtualization | Processes, `fork` / `exec` / `clone` | [`task.c`](kernel/core/task/task.c) |
+| | Scheduling | [`scheduler.c`](kernel/core/sched/scheduler.c) |
+| | Paging (Sv39), copy-on-write | [`vpages.c`](kernel/core/memory/vpages.c), [`trap.c`](arch/trap.c) |
+| | `mmap` | [`mmap.c`](kernel/core/memory/mmap.c) |
+| Concurrency | Locks, semaphores, wait queues | [`sync/`](kernel/core/sync) |
+| | Threads | [`thread.c`](user/lib/thread.c) |
+| Persistence | Block device | [`virtio_blk.c`](kernel/drivers/blk/virtio_blk.c) |
+| | Buffer cache, inodes, files, pipes | [`fs/`](kernel/core/fs) |
 
 ---
 
@@ -53,7 +53,6 @@ Requires `riscv64-elf-gcc`, `qemu-system-riscv64`, `cmake` and
 [`uv`](https://github.com/astral-sh/uv) for the tests.
 
 ```bash
-cd src
 cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=riscv64-toolchain.cmake
 cmake --build build --target run      # serial console
 cmake --build build --target rung     # framebuffer console

@@ -1,6 +1,6 @@
 file(GLOB_RECURSE UNIT_SRC CONFIGURE_DEPENDS *.c)
 
-set(OS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+set(OS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(CLIST_SRC ${OS_ROOT}/lib/clist.c)
 
 add_executable(

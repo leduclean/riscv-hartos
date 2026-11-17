@@ -192,7 +192,7 @@ add_custom_target(
     USES_TERMINAL
 )
 
-set(TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../tests)
+set(TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 add_custom_target(
     integration
     COMMAND

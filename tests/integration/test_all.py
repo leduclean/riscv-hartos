@@ -4,7 +4,7 @@ from pathlib import Path
 import pexpect
 import pytest
 
-OS_SOURCE: Path = Path(__file__).parents[2] / "src"
+OS_SOURCE: Path = Path(__file__).parents[2]
 pattern = re.compile(r"X\((\w+_test)")
 with open(OS_SOURCE / "user/include/cmd_registry.h") as f:
     content = f.read()
