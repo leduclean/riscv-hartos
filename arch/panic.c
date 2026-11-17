@@ -17,7 +17,8 @@ void _panic(const char *msg, const char *file, int line)
 	// NULL before the first task is elected, panic must survive that.
 	const task_t *p = task_active();
 	if (p) {
-		printf("[PANIC] active task: %s (pid %d)\n", p->name, p->pid);
+		printf("[PANIC] on hart%d, active task: %s (pid %d)\n",
+		       this_cpu()->hartid, p->name, p->pid);
 	}
 
 	// Halted, not rebooted: gdb attaches here and the whole state is intact.
