@@ -1,11 +1,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <lib/bit.h>
 #include <lib/clist.h>
 #include <lib/err.h>
 #include <lib/string.h>
 #include <lib/tinyalloc.h>
 
+#include <arch/abi.h>
 #include <arch/asm_defs.h>
 #include <arch/cpu.h>
 #include <arch/trap.h>
@@ -15,6 +17,7 @@
 #include <kernel/mmap.h>
 #include <kernel/pages.h>
 #include <kernel/scheduler.h>
+#include <kernel/spinlock.h>
 #include <kernel/syscall.h>
 #include <kernel/task.h>
 #include <kernel/time.h>
@@ -22,31 +25,25 @@
 #include <kernel/waitqueue.h>
 #include <user/kinterface.h>
 
-#include "arch/abi.h"
-#include "lib/bit.h"
-
 #define MAX_TASK 32
 
 /** @brief Task table. */
 typedef struct {
+	spinlock_t lock;
 	uint8_t next_pid; ///< Pid given to the next spawned task.
 	uint8_t active_task; ///< Number of living tasks, not TERMINATED.
 	clist_node_t head; ///< Head sentinel of the living tasks clist.
 } ptable_t;
 
 /** @brief The one task table. */
-static ptable_t task_table;
+static ptable_t task_table = { .lock = SPINLOCK_UNLOCKED,
+			       .next_pid = 0,
+			       .active_task = 0,
+			       .head = CLIST_NODE_INITIALIZER(
+				       task_table.head) };
 
 /** @brief Currently running task. */
 static task_t *active = NULL;
-
-/** @brief Init the task table. */
-static void init_task_table(void)
-{
-	clist_init_node(&task_table.head);
-	task_table.next_pid = 0;
-	task_table.active_task = 0;
-}
 
 /**
  * @brief Remove a task from all the blocking queues it could wait on.
@@ -108,7 +105,7 @@ static inline void init_task_queues(task_t *task)
 }
 
 /**
- * @brief Alloc a task squeleton ie without activating it or setting context.
+ * @brief Alloc a task pcb without activating it or setting context.
  * 
  * @param name Name of the task. 
  * @param prior Priority of the task.
@@ -118,17 +115,21 @@ static inline void init_task_queues(task_t *task)
  * @retval ERR_PTR(-EAGAIN) Task table full.
  * @retval ERR_PTR(-ENOMEM) Out of memory.
  */
-static inline task_t *alloc_squeletton(const char *name, priority prior,
-				       bool user, task_t *parent)
+static inline task_t *alloc_skeleton(const char *name, priority prior,
+				     bool user, task_t *parent)
 {
-	if (task_table.active_task >= MAX_TASK) {
-		return ERR_PTR(-EAGAIN);
-	}
-
 	task_t *task = calloc(1, sizeof(task_t));
 	if (!task) {
 		return ERR_PTR(-ENOMEM);
 	}
+
+	spinlock_lock(&task_table.lock);
+	if (task_table.active_task >= MAX_TASK) {
+		return ERR_PTR(-EAGAIN);
+	}
+	task->pid = task_table.next_pid++;
+	task_table.active_task++;
+	spinlock_unlock(&task_table.lock);
 
 	init_task_queues(task);
 
@@ -136,11 +137,18 @@ static inline task_t *alloc_squeletton(const char *name, priority prior,
 	task->user = user;
 	task->parent = parent;
 	task->priority = prior;
-	task->pid = task_table.next_pid++;
 	task->tgid = task->pid;
 	task->state = NEW;
 
 	return task;
+}
+
+static inline void free_skeleton(task_t *t)
+{
+	spinlock_lock(&task_table.lock);
+	task_table.active_task--;
+	free(t);
+	spinlock_unlock(&task_table.lock);
 }
 
 /**
@@ -197,9 +205,17 @@ void task_switch_active(task_t *next)
 	active = next;
 }
 
-const clist_node_t *task_table_clist(void)
+int task_table_for_each(int (*func)(clist_node_t *node, void *), void *args)
 {
-	return &task_table.head;
+	spinlock_lock(&task_table.lock);
+
+	clist_node_t *node = clist_for_each(&task_table.head, func, args);
+
+	spinlock_unlock(&task_table.lock);
+	if (node) {
+		return -1;
+	}
+	return 0;
 }
 
 uint8_t priority_higher(priority prior, priority other)
@@ -425,7 +441,7 @@ static int transfer_argv(pte_t *old_ptable, pte_t *new_ptable,
 task_t *task_start_userland(struct file *user_elf, const char *name,
 			    priority prior)
 {
-	task_t *p = alloc_squeletton(name, prior, true, task_active());
+	task_t *p = alloc_skeleton(name, prior, true, task_active());
 	if (IS_ERR(p)) {
 		return p;
 	}
@@ -436,13 +452,13 @@ task_t *task_start_userland(struct file *user_elf, const char *name,
 	uintptr_t entry;
 	int res = load_elf_image(p, user_elf, &entry);
 	if (res < 0) {
-		goto err_free_task;
+		goto err_free_skel;
 	}
 
 	uintptr_t sp;
 	res = transfer_argv(NULL, p->mm->root, NULL, &sp);
 	if (res < 0) {
-		goto err_free_task;
+		goto err_free_skel;
 	}
 
 	tframe_init(p->tframe_pa, p->mm->root,
@@ -453,18 +469,17 @@ task_t *task_start_userland(struct file *user_elf, const char *name,
 	activate_task(p);
 	return p;
 
-err_free_task:
-	free(p);
+err_free_skel:
+	free_skeleton(p);
 	p = ERR_PTR(res);
 	return p;
 }
 
 task_t *task_kthread(void code(void), const char *name, priority prior)
 {
-	unsigned long state = irq_save();
-	task_t *p = alloc_squeletton(name, prior, false, task_active());
+	task_t *p = alloc_skeleton(name, prior, false, task_active());
 	if (IS_ERR(p)) {
-		goto err_restore_irq;
+		return p;
 	}
 
 	p->code = code;
@@ -477,11 +492,6 @@ task_t *task_kthread(void code(void), const char *name, priority prior)
 
 	copy_fds(p, task_active(), false);
 	activate_task(p);
-	irq_restore(state);
-	return p;
-
-err_restore_irq:
-	irq_restore(state);
 	return p;
 }
 
@@ -493,15 +503,15 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 	}
 
 	int res = -ENOMEM;
-	task_t *child = alloc_squeletton(parent->name, parent->priority,
-					 parent->user, parent);
+	task_t *child = alloc_skeleton(parent->name, parent->priority,
+				       parent->user, parent);
 	if (IS_ERR(child)) {
 		return child;
 	}
 
 	tframe_t *t = page_alloc();
 	if (!t) {
-		goto err_free_task;
+		goto err_free_squell;
 	}
 	child->tframe_pa = t;
 
@@ -561,8 +571,8 @@ err_free_map:
 	mm_put(child->mm);
 err_free_tframe:
 	page_put(child->tframe_pa);
-err_free_task:
-	free(child);
+err_free_squell:
+	free_skeleton(child);
 	child = ERR_PTR(res);
 	return child;
 }
@@ -701,7 +711,6 @@ int task_init(void)
 {
 	int res;
 
-	init_task_table();
 	scheduler_init();
 	res = init_idle();
 

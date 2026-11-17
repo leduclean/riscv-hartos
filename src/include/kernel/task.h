@@ -98,11 +98,11 @@ typedef struct task {
 void task_switch_active(task_t *next);
 
 /**
- * @brief Get the clist holding every living task.
+ * @brief Traverse the task table, calling a function on each member.
  *
- * @return Head sentinel of the task table clist.
+ * @return 0 on Success, error code < 0 on failure.
  */
-const clist_node_t *task_table_clist(void);
+int task_table_for_each(int (*func)(clist_node_t *node, void *), void *args);
 
 /**
  * @brief Get the running task.

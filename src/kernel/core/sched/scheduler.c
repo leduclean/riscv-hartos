@@ -374,10 +374,7 @@ static inline int exit_tgid_cb(clist_node_t *node, void *arg)
 void scheduler_exit_group(int exit_code)
 {
 	task_t *task = task_active();
-	unsigned long flags = irq_save();
-	clist_for_each(task_table_clist(), exit_tgid_cb, &task->tgid);
-	irq_restore(flags);
-
+	task_table_for_each(exit_tgid_cb, &task->tgid);
 	scheduler_exit(exit_code);
 }
 
