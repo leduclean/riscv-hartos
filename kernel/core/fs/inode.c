@@ -223,6 +223,7 @@ int inode_lock(struct inode *i)
 
 		int32_t itab_blkno = get_itab_blkno(i->ino);
 		if (itab_blkno < 0) {
+			mutex_unlock(&i->m);
 			return itab_blkno;
 		}
 
