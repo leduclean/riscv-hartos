@@ -126,25 +126,32 @@ static void activate_task(task_t *p)
  */
 static void ktask_launcher(void)
 {
-	//NOTE: We force this because there is no guarantee,
-	// after a ktask spawn to have irq enable.
-	// (ctx switch does not preserve the sstatus)
+	scheduler_finish_switch();
 	irq_enable_s();
+
 	task_t *p = task_active();
 	p->code();
 	scheduler_exit_group(0);
 }
 
+static void utask_launcher(void)
+{
+	scheduler_finish_switch();
+	trap_return_to_user();
+}
+
 int task_enter_idle(void)
 {
-	task_t *p = task_kthread(task_idle, "idle", IDLE);
+	/* The idle task needs no init context since we are going to switch out from it */
+	task_t *p = alloc_skeleton("idle", IDLE, false, NULL);
 	if (IS_ERR(p)) {
 		return PTR_ERR(p);
 	}
 	/* The running task never sits in a ready queue. */
-	clist_remove(&p->ready_node);
 	this_cpu()->active = p;
-	this_cpu()->active->state = RUNNING;
+	this_cpu()->idle = p;
+	p->state = RUNNING;
+
 	return 0;
 }
 
@@ -407,7 +414,7 @@ task_t *task_start_userland(struct file *user_elf, const char *name,
 	}
 
 	p->ctx.sp = (uint64_t)&p->kstack[KSTACK_SIZE];
-	p->ctx.ra = (uintptr_t)trap_return_to_user;
+	p->ctx.ra = (uintptr_t)utask_launcher;
 
 	uintptr_t entry;
 	int res = load_elf_image(p, user_elf, &entry);
@@ -443,13 +450,8 @@ task_t *task_kthread(void code(void), const char *name, priority prior)
 	}
 
 	p->code = code;
-	if (p->pid == 0) {
-		p->ctx.ra = (uintptr_t)code;
-	} else {
-		p->ctx.sp = (uint64_t)&p->kstack[KSTACK_SIZE];
-		p->ctx.ra = (uintptr_t)ktask_launcher;
-	}
-
+	p->ctx.sp = (uint64_t)&p->kstack[KSTACK_SIZE];
+	p->ctx.ra = (uintptr_t)ktask_launcher;
 	copy_fds(p, task_active(), false);
 	activate_task(p);
 	return p;
@@ -519,7 +521,7 @@ task_t *task_clone(task_t *parent, void *entry, void *args, void *stack,
 		    (unsigned long)&child->kstack[KSTACK_SIZE]);
 
 	// On ctx switch on fork, we want this state
-	child->ctx.ra = (unsigned long)trap_return_to_user;
+	child->ctx.ra = (unsigned long)utask_launcher;
 	child->ctx.sp = (unsigned long)&child->kstack[KSTACK_SIZE];
 
 	copy_fds(child, parent, flags & CLONE_FILES);

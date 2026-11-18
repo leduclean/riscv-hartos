@@ -26,30 +26,28 @@
 
 /**
  * @brief User elf included via user_app.S.
+ * FIX: drop me.
  */
 extern char _user_elf_start[];
 
-/** @brief Kernel entry point, called by all other hart than hart0 is cleared. */
-[[noreturn]] void kernel_start(void)
+/** 
+ * @brief Kernel entry point, called by all other hart than hart0 is cleared.
+ * @warning This should not spawn any task. The task are spawned in init.
+ * */
+[[noreturn]] static void kernel_start(void)
 {
 	mmap_switch_to_kernel();
-
-	printf("[INFO] init task \n");
 	int res = task_enter_idle();
 	if (res < 0) {
 		panic("[FAILURE] Init idle has failed");
 	}
 
 	irq_enable_s();
-	printf("[INFO] S irq enabled\n");
-
 	time_enable_s_irq();
 	plic_enable_s_external();
-
-	/** Enable on all hart thos irq */
+	/** Enable on all hart those irq */
 	plic_enable_irq(VIRTIO_BLK_PLIC_ID);
 	plic_enable_irq(UART_PLIC_ID);
-
 	plic_set_treshold(0);
 
 	task_idle();
@@ -72,6 +70,16 @@ static void init(void)
 		panic("[FAILURE] Console map has failed");
 	}
 
+	res = uart_spawn_daemons();
+	if (res < 0) {
+		panic("[FAILURE] Uart daemon spawn has failed");
+	}
+
+	res = time_spawn_daemons();
+	if (res < 0) {
+		panic("[FAILURE] time daemon spawn has failed");
+	}
+
 	struct file *user_elf = file_open("/user.elf", O_R);
 	if (IS_ERR(user_elf)) {
 		panic("[FAILURE] User Init elf image not mounted in the fs");
@@ -92,8 +100,10 @@ bool boot_rdy = false;
 
 /**
  * @brief Supervisor boot byt hart0.
+ *
+ * @warning This should only spawn the init task and no other task.
  */
-void sboot(void)
+[[noreturn]] static void sboot(void)
 {
 	int res;
 
@@ -139,23 +149,15 @@ void sboot(void)
 	plic_enable_irq(UART_PLIC_ID);
 	plic_set_treshold(0);
 
-	res = uart_spawn_daemons();
-	if (res < 0) {
-		panic("[FAILURE] Uart daemon spawn has failed");
-	}
+	/* Once theire, the other hart are able to launch and will help to init the rest of the system */
+	m2m_wmb();
+	boot_rdy = true;
 
-	res = time_spawn_daemons();
-	if (res < 0) {
-		panic("[FAILURE] time daemon spawn has failed");
-	}
-
+	/* This thread will make the rest of the init which can be blocked and will
+     * fallback to the idle task when blocked */
 	if (IS_ERR(task_kthread(init, "init", NORMAL))) {
 		printf("[FAILURE]: failed to spawn init kthread \n");
 	}
-
-	m2m_wmb();
-
-	boot_rdy = true;
 	task_idle();
 }
 

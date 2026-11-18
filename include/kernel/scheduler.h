@@ -10,13 +10,6 @@
 #include <kernel/task.h>
 
 /**
- * @brief Remove a task from all the scheduling queues it could be in.
- *
- * @param task Task to remove from the queues.
- */
-void scheduler_rm_from_sched_queues(task_t *task);
-
-/**
  * @brief Preemption state of the scheduler. 
  */
 bool scheduler_preemptible(void);
@@ -60,6 +53,19 @@ void scheduler_rotate(void);
  * @param task Task to admit.
  */
 void scheduler_admit(task_t *task);
+
+/**
+ * @brief Finish the context switch on a brand new task.
+ * @note MUST be call after launching any task.
+ */
+void scheduler_finish_switch(void);
+
+/**
+ * @brief Remove a task from all the scheduling queues it could be in.
+ *
+ * @param task Task to remove from the queues.
+ */
+void scheduler_rm_from_sched_queues(task_t *task);
 
 /**
  * @brief Wake a task up and reschedule it in its ready queue.

@@ -19,13 +19,14 @@ extern void ctx_sw(ctx_t *old_ctx, ctx_t *new_ctx);
 
 /** @brief Priority mapped ready queues. */
 static clist_node_t rqs[PRIORITY_COUNT];
+
 /**
  * @brief This lock protects all the queue management.
  */
 static spinlock_t sched_lock = SPINLOCK_UNLOCKED;
 
 /** @brief Highest ready priority. */
-static priority highest_rdy;
+static priority highest_rdy = IDLE;
 
 static void rm_from_wq_locked(task_t *task)
 {
@@ -110,8 +111,6 @@ static void init_ready_queues(void)
 		clist_node_t *current_head = &rqs[i];
 		clist_init_node(current_head);
 	}
-	// The initiate prioity should be IDLE
-	highest_rdy = IDLE;
 }
 
 /**
@@ -142,9 +141,12 @@ static void refresh_highest_prio_locked(void)
 		if (!clist_empty(&rqs[p])) {
 			// Update the new highest prio
 			highest_rdy = p;
-			break;
+			return;
 		}
 	}
+
+	/* Found nothing */
+	highest_rdy = IDLE;
 }
 
 /**
@@ -161,6 +163,10 @@ static void do_ctx_switch(task_t *next)
 
 static inline clist_node_t *pick_next_locked(void)
 {
+	if (highest_rdy == IDLE) {
+		return &this_cpu()->idle->ready_node;
+	}
+
 	clist_node_t *next_node = clist_pop_front(highest_rq());
 	refresh_highest_prio_locked();
 	return next_node;
@@ -169,6 +175,10 @@ static inline clist_node_t *pick_next_locked(void)
 static inline void put_prev_locked(void)
 {
 	task_t *current = task_active();
+	if (current == this_cpu()->idle) {
+		return;
+	}
+
 	rq_enqueue_locked(current);
 }
 
@@ -176,7 +186,7 @@ static void switch_out_active_locked(void)
 {
 	clist_node_t *next_node = pick_next_locked();
 	if (!next_node) {
-		panic("No idle task is available.");
+		panic("Invariant broken: No idle task is available.");
 	}
 
 	do_ctx_switch(container_of(next_node, task_t, ready_node));
@@ -195,26 +205,6 @@ static void switch_out_active(void)
 	spinlock_unlock_irq_restore(&sched_lock, flags);
 }
 
-static void scheduler_rotate_locked(void)
-{
-	if (preempt_disabled()) {
-		delay_schedule();
-		return;
-	}
-
-	put_prev_locked();
-	clist_node_t *next_node = pick_next_locked();
-	if (!next_node) {
-		/* No other task, there should always be idle at least. */
-		panic("No other task available");
-	}
-	if (next_node == &task_active()->ready_node) {
-		/* Only this task is ready, no switch */
-		return;
-	}
-	do_ctx_switch(container_of(next_node, task_t, ready_node));
-}
-
 void scheduler_rotate(void)
 {
 	if (preempt_disabled()) {
@@ -223,7 +213,15 @@ void scheduler_rotate(void)
 	}
 
 	unsigned long flags = spinlock_lock_irq_save(&sched_lock);
-	scheduler_rotate_locked();
+	put_prev_locked();
+	clist_node_t *next_node = pick_next_locked();
+	if (next_node == &task_active()->ready_node) {
+		/* Only this task is ready, no need to switch */
+		spinlock_unlock_irq_restore(&sched_lock, flags);
+		return;
+	}
+
+	do_ctx_switch(container_of(next_node, task_t, ready_node));
 	spinlock_unlock_irq_restore(&sched_lock, flags);
 }
 
@@ -236,11 +234,12 @@ static void check_and_preempt_locked(task_t *task)
 {
 	task_t *current = task_active();
 	if (!current) {
+		panic("Invariant broke, theire should always be an idle task");
 		return;
 	}
 
 	if (priority_higher(task->priority, current->priority)) {
-		scheduler_rotate_locked();
+		delay_schedule();
 	}
 }
 
@@ -250,6 +249,15 @@ void scheduler_admit(task_t *task)
 	rq_enqueue_locked(task);
 	check_and_preempt_locked(task);
 	spinlock_unlock_irq_restore(&sched_lock, flags);
+}
+
+void scheduler_finish_switch(void)
+{
+	//NOTE: We force this because there is no guarantee,
+	// after a ktask spawn to have irq enable.
+	// (ctx switch does not preserve the sstatus)
+	spinlock_unlock(&sched_lock);
+	irq_enable_s();
 }
 
 /**

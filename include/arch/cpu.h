@@ -21,6 +21,7 @@ typedef struct task task_t;
 struct cpu {
 	uint32_t hartid;
 	task_t *active;
+	task_t *idle;
 	uint32_t preempt_count;
 	bool need_resched;
 };
