@@ -17,13 +17,14 @@ int8_t sys_wait(void)
 	task_t *parent = task_active();
 	//TODO: Should return an error this task has no child
 	clist_node_t *zombies = &parent->zombies;
-	unsigned long flags = irq_save();
+	unsigned long flags = spinlock_lock_irq_save(&parent->zlock);
 	while (clist_empty(zombies)) {
-		scheduler_block_on(&parent->zombie_wq);
+		scheduler_block_on_locked(&parent->zombie_wq, &parent->zlock);
+		flags = spinlock_lock_irq_save(&parent->zlock);
 	}
 	// Remove the first element of the zombie queue
 	clist_node_t *node = clist_pop_front(zombies);
-	irq_restore(flags);
+	spinlock_unlock_irq_restore(&parent->zlock, flags);
 
 	task_t *to_reap = container_of(node, task_t, wait_node);
 	uint8_t pid = to_reap->pid;
@@ -45,13 +46,13 @@ int8_t sys_waitpid(int8_t pid)
 	clist_node_t *zombies = &parent->zombies;
 	clist_node_t *found_node = NULL;
 
-	unsigned long flags = irq_save();
+	unsigned long flags = spinlock_lock_irq_save(&parent->zlock);
 	while ((found_node = clist_find(zombies, find_pid_cb, &pid)) == NULL) {
-		// Wait on its wait queue
-		scheduler_block_on(&parent->zombie_wq);
+		scheduler_block_on_locked(&parent->zombie_wq, &parent->zlock);
+		flags = spinlock_lock_irq_save(&parent->zlock);
 	}
 	clist_remove(found_node);
-	irq_restore(flags);
+	spinlock_unlock_irq_restore(&parent->zlock, flags);
 
 	task_t *to_reap = container_of(found_node, task_t, wait_node);
 	task_reap(to_reap);

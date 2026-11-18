@@ -219,33 +219,28 @@ static void release_fds(task_t *p)
 
 void task_zombify(task_t *task, int exit_code)
 {
-	unsigned long state = irq_save();
-
 	task_t *parent = task->parent;
 	if (parent == NULL) {
 		panic("Zombify an orphan task is not permitted");
 	}
 
-	task->state = ZOMBIE;
+	release_fds(task);
 	task->exit_code = exit_code;
-
 	scheduler_rm_from_sched_queues(task);
 
-	release_fds(task);
+	unsigned long flags = spinlock_lock_irq_save(&parent->zlock);
+	task->state = ZOMBIE;
 	clist_push_back(&parent->zombies, &task->wait_node);
+	spinlock_unlock_irq_restore(&parent->zlock, flags);
 
-	if (parent->state == BLOCKED) {
-		// Parent is waiting so we wake him up
-		// to check if he can stop wait.
-		scheduler_wake_waiting_queue(&parent->zombie_wq);
-	}
-
-	irq_restore(state);
+	//TODO:(BUG1) Notification race on this, the other hart waiting to reap this
+	// child could destroy it when still running on the cpu.
+	scheduler_wake_waiting_queue(&parent->zombie_wq);
 }
 
 void task_destroy(task_t *task)
 {
-	unsigned long state = irq_save();
+	//TODO:(BUG1) Maybe we should wait here for the child teminason on the other hart.
 	if (task_active() == task) {
 		panic("Trying to destroy the current task led to segfault. Use zombify instead");
 	}
@@ -255,6 +250,7 @@ void task_destroy(task_t *task)
 
 	spinlock_lock(&task_table.lock);
 	clist_remove(&task->task_node);
+	task_table.active_task--;
 	spinlock_unlock(&task_table.lock);
 
 	if (task->mm) {
@@ -262,9 +258,6 @@ void task_destroy(task_t *task)
 	}
 
 	free(task);
-	task_table.active_task--;
-
-	irq_restore(state);
 }
 
 void task_exit_mm(task_t *task)

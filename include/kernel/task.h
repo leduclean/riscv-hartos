@@ -15,6 +15,7 @@
 #include <arch/trap.h>
 #include <kernel/fs.h>
 #include <kernel/mutex.h>
+#include <kernel/spinlock.h>
 #include <kernel/vpages.h>
 #include <kernel/waitqueue.h>
 
@@ -75,12 +76,16 @@ typedef struct task {
 
 	clist_node_t task_node; ///< Task table node.
 	clist_node_t ready_node; ///< Scheduler ready queue node.
+
+	//
 	clist_node_t
 		wait_node; ///< Wait queue node, used to put the task in a zombie, IO or Mutex wait state.
 	clist_node_t sleep_node; ///< Sleeping queue node.
 	uint64_t wake_up_time; ///< Wake up date, in secondes since boot.
-
 	task_t *parent; ///< Parent task, NULL if orphan.
+
+	spinlock_t
+		zlock; //< Lock protecting the list of zombies of the process.
 	clist_node_t zombies; ///< Terminated children waiting to be reaped.
 	wait_queue_t zombie_wq; ///< Queue for blocked thread on this thread.
 	int8_t exit_code; ///< Code to identify what made our task exit.
